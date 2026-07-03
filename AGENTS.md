@@ -32,10 +32,6 @@ stockrank version
 
 Tests live in `tests/` with names like `test_config.py`. Always use temporary project fixtures and fake Massive clients instead of network calls.
 
-## Commit & Pull Request Guidelines
-
-Use Conventional Commits with lowercase, present-tense subjects, scoped when useful. In PRs, describe the workflow impact, list verification commands run, and call out any changed TOML schemas, prompt templates, or generated output formats.
-
 ## Security
 
 Read Massive credentials only from `.env` via `MASSIVE_API_KEY`; never commit secrets.
