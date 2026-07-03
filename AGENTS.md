@@ -6,6 +6,15 @@
 
 Static assets are part of the product: prompt templates live in `prompts/`, seed strategies in `strategies/`, modes in `modes/`, harness labels in `harnesses/`, and runnable universes in `universes/`. Execution skills are installed agent skills, not repo-local assets. Runtime output belongs under ignored `runs/`. Versioned live portfolio state belongs under `live/`; do not add it to `.gitignore`.
 
+## Design Invariants
+
+- Mode = content (fused persona + task, never separable); harness = executor label. The CLI never invokes harnesses or LLMs. Which modes/harnesses participate in which phase is decided only in the strategy file, and all weights live only there, normalized at finalize time over available results.
+- `prepare scores` snapshots the resolved strategy and every referenced mode/harness definition verbatim into `run.toml`, so editing or deleting source TOML files never changes an existing run.
+- Prompt templates in `prompts/` hold fixed mechanics only (files to read, file to write, exact output schema); persona/task come from the mode. Rendered `task.txt` files address paths via `{workdir}` relative to the harness session folder because subagents inherit the session cwd.
+- Execution skills contain only batch orchestration and verification — never scoring or construction instructions, which live exclusively in rendered `task.txt` files.
+- `prepare` refuses to overwrite an existing phase `work/` without `--force`; `finalize` is idempotent and never aborts on invalid results (warn, exclude, report). `work/` folders are permanent and never cleaned up automatically.
+- Tracking is deterministic buy-and-hold math (fixed inception weights, price returns only); the live portfolio changes only through the human-gated `stockrank commit`.
+
 ## Build, Test, and Development Commands
 
 ```sh
