@@ -42,6 +42,7 @@ prompts/
   portfolio.txt
 strategies/
   core.toml               # complete run definition, see §3
+  test.toml               # minimal Dow 30 test run definition
 modes/
   momentum.toml           # scoring modes
   mean-reversion.toml
