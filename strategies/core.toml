@@ -1,0 +1,28 @@
+name = "core"
+universe = "sp100"
+
+[[scores.modes]]
+name = "momentum"
+weight = 1.0
+harnesses = [
+  { name = "claude-code", weight = 1.0 },
+  { name = "codex", weight = 0.5 },
+]
+
+[[scores.modes]]
+name = "mean-reversion"
+weight = 0.5
+harnesses = [
+  { name = "claude-code", weight = 1.0 },
+]
+
+[proposals]
+num_positions = 15
+runs = [
+  { mode = "balanced-builder", harness = "claude-code" },
+  { mode = "balanced-builder", harness = "codex" },
+]
+
+[portfolio]
+mode = "final-allocator"
+harness = "claude-code"

@@ -1,0 +1,13 @@
+[api]
+provider = "massive"
+
+[data]
+price_history_years = 2
+news_items = 10
+financial_periods = 8
+
+[defaults]
+strategy = "core"
+
+[tracking]
+benchmark = "SPY"

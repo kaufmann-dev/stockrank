@@ -1,0 +1,3 @@
+[mcp_servers.massive]
+command = "uvx"
+args = ["--from", "git+https://github.com/massive-com/mcp_massive", "mcp_massive"]

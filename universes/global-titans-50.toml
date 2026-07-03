@@ -1,0 +1,8 @@
+name = "Global Titans 50"
+tickers = [
+  "NVDA", "AAPL", "GOOG", "MSFT", "AMZN", "TSM", "AVGO", "META", "TSLA", "LLY",
+  "BRK.B", "JPM", "WMT", "AMD", "ASML", "V", "JNJ", "XOM", "MA", "ABBV",
+  "CSCO", "CAT", "LRCX", "COST", "BAC", "ORCL", "GE", "UNH", "NVO", "HD",
+  "PG", "SAP", "TM", "BABA", "SHEL", "AZN", "CRM", "NFLX", "MRK", "CVX",
+  "KO", "PEP", "LIN", "MCD", "TMO", "ACN", "QCOM", "TXN", "IBM", "PLTR",
+]

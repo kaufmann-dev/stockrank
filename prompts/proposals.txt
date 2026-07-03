@@ -1,0 +1,33 @@
+{persona}
+
+{task}
+
+Build a long-only proposal portfolio for the `{universe}` universe.
+Target position count hint: {num_positions_hint}.
+Your working folder is `{workdir}` relative to the current harness session.
+
+Read:
+- `{workdir}/scores.csv`
+- `{workdir}/rationales.csv`
+- `{workdir}/report.md`
+
+Use the numbers in `scores.csv` and the per-evaluation reasoning in
+`rationales.csv` to explain why each chosen stock belongs in the proposal.
+
+Write exactly one TOML file at `{workdir}/proposal.toml` with this schema:
+
+mode = "balanced-builder"
+harness = "claude-code"
+summary = "Overall portfolio thesis."
+
+[[positions]]
+ticker = "AAPL"
+weight = 0.08
+rationale = "Specific reason for the position."
+
+Rules:
+- Set `mode` and `harness` to the mode and harness encoded in this folder name.
+- Position weights must sum to 1.0.
+- Use only tickers from the universe represented in the input files.
+- Each rationale must be concise and evidence-based.
+- Do not write any other output files.
