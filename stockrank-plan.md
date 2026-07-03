@@ -45,6 +45,12 @@ strategies/
 modes/
   momentum.toml           # scoring modes
   mean-reversion.toml
+  best-bet.toml
+  confluence.toml
+  distress.toml
+  mispricing.toml
+  moat-durability.toml
+  stress.toml
   balanced-builder.toml   # proposal modes
   final-allocator.toml    # portfolio modes
 harnesses/
