@@ -32,10 +32,6 @@ README.md
 pyproject.toml
 stockrank.toml            # global config, see §3
 src/stockrank/            # package: cli.py, config.py, massive.py, prepare.py, finalize.py, aggregate.py
-skills/                   # canonical execution skills, see §5; install once into
-  execute-scores/SKILL.md #   the global skills folder (e.g. ~/.claude/skills/)
-  execute-proposals/SKILL.md
-  execute-portfolio/SKILL.md
 prompts/
   scores.txt              # phase prompt templates (fixed mechanics), see §5
   proposals.txt
@@ -248,15 +244,15 @@ Each `task.txt` is rendered from the phase template in `prompts/` with `str.form
   ```
 - **portfolio.txt** placeholders: `{persona}` `{task}` `{workdir}`. Reads `{workdir}/scores.csv`, `{workdir}/rationales.csv`, `{workdir}/report.md`, `{workdir}/proposals.csv`, `{workdir}/proposals.md`, and `{workdir}/current.csv` + `{workdir}/current.md` (the live portfolio — the existing book — with its provenance: which strategy built it, its mode weights, its thesis, and each position's original rationale). Fixed mechanics instruct: treat the current book as the starting point and justify every deviation from it; if it is empty, build from scratch; and since the book may have been constructed under a *different strategy* (regimes change — the previous run may have weighted momentum where this one weights mean-reversion), judge holdovers by weighing their original rationale against the current lens, not by today's scores alone. Turnover discipline (limits, replacement thresholds) is policy and therefore belongs in the portfolio mode's `task`, not in the template. Writes `{workdir}/portfolio.toml` (same schema as `proposal.toml`, without the `mode`/`harness` fields).
 
-### Execution skills (`skills/`)
+### Execution skills
 
 The execute step is driven by three static skills so the user never types an orchestration prompt. The workflow: **cd into the target work folder, open the harness there, invoke the skill — no arguments.** Skills derive everything from the current directory. Multiple sessions — one per harness — can run in parallel, since they write into disjoint folders. Harnesses have no self-awareness of which harness they are: identity is carried entirely by the folder the user runs the session in (the user is the router). **First actions of every skill:** (1) validate that the cwd is the right kind of folder (ticker subfolders with `task.txt` files, or a `task.txt` directly) and abort with a clear message otherwise; (2) parse the designated harness (and mode) from the cwd path and ask the user to confirm that this session *is* that harness before doing anything — this guards against opening the wrong tool in a folder, which would silently mis-attribute results.
 
-The canonical skill files live in the repo under `skills/` (version-controlled with the rest of the system); the user installs them once into the harness's global skills folder (e.g. `~/.claude/skills/`) by copy or symlink. Harnesses without a skill mechanism are invoked with one line: "read `skills/execute-scores/SKILL.md` in the repo and follow it here".
+The canonical agent skills live outside this repo as installed harness skills. Harnesses invoke them by name from the prepared work folders.
 
-- **execute-scores** — run from a `runs/<id>/scores/work/<mode>/<harness>/` folder. Spawns one subagent per ticker subfolder, in parallel batches (5–10 at a time); each subagent does nothing but follow its own folder's `task.txt`. Afterwards verifies that every ticker folder contains a parseable `results.toml`, retries missing/invalid ones once, and reports a completion summary (done / failed tickers).
-- **execute-proposals** — run from a `runs/<id>/proposals/work/<mode>__<harness>/` folder. Follows its `task.txt`, verifies `proposal.toml` parses and weights sum to ~1.0, reports.
-- **execute-portfolio** — run from `runs/<id>/portfolio/work/`. Same pattern for `portfolio.toml`.
+- **stockrank-scores** — run from a `runs/<id>/scores/work/<mode>/<harness>/` folder. Spawns one subagent per ticker subfolder, in parallel batches (5–10 at a time); each subagent does nothing but follow its own folder's `task.txt`. Afterwards verifies that every ticker folder contains a parseable `results.toml`, retries missing/invalid ones once, and reports a completion summary (done / failed tickers).
+- **stockrank-proposals** — run from a `runs/<id>/proposals/work/<mode>__<harness>/` folder. Follows its `task.txt`, verifies `proposal.toml` parses and weights sum to ~1.0, reports.
+- **stockrank-portfolio** — run from `runs/<id>/portfolio/work/`. Same pattern for `portfolio.toml`.
 
 Skills contain *only* batch orchestration and verification — never scoring or construction instructions, which live exclusively in the rendered `task.txt` files.
 

@@ -4,7 +4,7 @@
 
 `src/stockrank/` contains the CLI package. Keep command wiring in `cli.py`, configuration and TOML validation in `config.py`, data access in `massive.py`, phase setup in `prepare.py`, result parsing and aggregation in `aggregate.py` and `finalize.py`, live portfolio promotion in `live.py`, and performance tracking in `tracking.py`.
 
-Static assets are part of the product: prompt templates live in `prompts/`, execution-skill instructions in `skills/`, seed strategies in `strategies/`, modes in `modes/`, harness labels in `harnesses/`, and runnable universes in `universes/`. Runtime output belongs under ignored `runs/`. Versioned live portfolio state belongs under `live/`; do not add it to `.gitignore`.
+Static assets are part of the product: prompt templates live in `prompts/`, seed strategies in `strategies/`, modes in `modes/`, harness labels in `harnesses/`, and runnable universes in `universes/`. Execution skills are installed agent skills, not repo-local assets. Runtime output belongs under ignored `runs/`. Versioned live portfolio state belongs under `live/`; do not add it to `.gitignore`.
 
 ## Build, Test, and Development Commands
 

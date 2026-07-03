@@ -33,7 +33,7 @@ Create a score run from a strategy:
 stockrank prepare scores --strategy core
 ```
 
-This creates `runs/<id>/scores/work/<mode>/<harness>/<ticker>/` folders with downloaded Massive data and a rendered `task.txt` per ticker. Open the intended harness in a `runs/<id>/scores/work/<mode>/<harness>/` folder and follow `skills/execute-scores/SKILL.md`. The harness writes one `results.toml` per ticker folder.
+This creates `runs/<id>/scores/work/<mode>/<harness>/<ticker>/` folders with downloaded Massive data and a rendered `task.txt` per ticker. Open the intended harness in a `runs/<id>/scores/work/<mode>/<harness>/` folder and invoke `$stockrank-scores`. The harness writes one `results.toml` per ticker folder.
 
 Finalize scores:
 
@@ -47,7 +47,7 @@ Prepare proposal work after scores are finalized:
 stockrank prepare proposals --run <id>
 ```
 
-Run the matching harness in each `runs/<id>/proposals/work/<mode>__<harness>/` folder using `skills/execute-proposals/SKILL.md`. Each folder writes `proposal.toml`.
+Run the matching harness in each `runs/<id>/proposals/work/<mode>__<harness>/` folder using `$stockrank-proposals`. Each folder writes `proposal.toml`.
 
 Finalize proposals and prepare the final portfolio:
 
@@ -56,7 +56,7 @@ stockrank finalize proposals --run <id>
 stockrank prepare portfolio --run <id>
 ```
 
-Run the portfolio harness in `runs/<id>/portfolio/work/` using `skills/execute-portfolio/SKILL.md`. It writes `portfolio.toml`.
+Run the portfolio harness in `runs/<id>/portfolio/work/` using `$stockrank-portfolio`. It writes `portfolio.toml`.
 
 Finalize the portfolio:
 
