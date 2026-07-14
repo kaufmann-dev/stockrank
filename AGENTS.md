@@ -4,7 +4,7 @@
 
 `src/stockrank/` is the CLI package. Keep Typer command functions in `cli.py` thin; put behavior in importable functions so tests can call them directly.
 
-Static assets are part of the product: `prompts/`, `strategies/`, `modes/`, `harnesses/`, `universes/`. Execution skills are installed agent skills, not repo-local assets. Runtime output belongs under ignored `runs/`; live portfolio state under `live/` stays versioned — never add `live/` to `.gitignore`.
+Static assets are part of the product: `prompts/`, `strategies/`, `modes/`, `harnesses/`, `universes/`. Project-scoped execution skills live under `.agents/skills/` and remain separate from runtime prompt assets. Runtime output belongs under ignored `runs/`; live portfolio state under `live/` stays versioned — never add `live/` to `.gitignore`.
 
 ## Design Invariants
 

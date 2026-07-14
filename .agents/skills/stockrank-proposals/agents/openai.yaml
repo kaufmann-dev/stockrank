@@ -1,0 +1,7 @@
+interface:
+  display_name: "Stockrank Proposals"
+  short_description: "Build and validate Stockrank portfolio proposals"
+  default_prompt: "Use $stockrank-proposals to complete and validate this Stockrank proposal work folder."
+
+policy:
+  allow_implicit_invocation: false
