@@ -1,0 +1,7 @@
+interface:
+  display_name: "Stockrank Scores"
+  short_description: "Delegate and validate Stockrank ticker scoring"
+  default_prompt: "Use $stockrank-scores to delegate and validate scoring for these Stockrank tickers."
+
+policy:
+  allow_implicit_invocation: false

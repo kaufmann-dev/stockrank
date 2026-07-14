@@ -2,7 +2,7 @@
 
 `stockrank` is a Python CLI for managing external-agent stock ranking runs. It prepares self-contained work folders, renders prompts, parses TOML files written by agent harnesses, aggregates score and portfolio outputs, tracks forward performance, and promotes a finalized run into an explicit live portfolio.
 
-The CLI does not invoke LLMs. Agent execution happens outside `stockrank`: prepare a phase, run the matching harness skill in the generated work folder, then finalize the phase.
+The CLI does not invoke LLMs. Agent execution happens outside `stockrank`: prepare a phase, run the matching project-scoped skill from `.agents/skills/` in the generated work folder, then finalize the phase.
 
 ## Concepts
 
