@@ -24,6 +24,7 @@ def _project(root: Path) -> None:
             "defaults": {"model": "deepseek", "mode": "best-bet", "profile": "medium"},
             "models": {
                 "deepseek": {
+                    "provider": "deepseek",
                     "base_url": "https://api.deepseek.com",
                     "model": "deepseek-chat",
                 }
@@ -82,6 +83,8 @@ def test_model_list_reports_uninitialized_project_without_error(
             "model",
             "add",
             "example",
+            "--provider",
+            "example",
             "--base-url",
             "https://example.com/v1",
             "--model",
@@ -94,12 +97,16 @@ def test_model_list_reports_uninitialized_project_without_error(
 
 
 def test_initializes_complete_zero_model_project(tmp_path: Path, monkeypatch) -> None:
+    setup_roots: list[Path] = []
+    monkeypatch.setattr("stockrank.cli._run_setup", setup_roots.append)
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ["init"])
 
     assert result.exit_code == 0
     assert "Initialized stockrank project" in result.stdout
+    assert "Setup complete." in result.stdout
+    assert setup_roots == [tmp_path]
     assert (tmp_path / "stockrank.toml").is_file()
     assert (tmp_path / "modes" / "best-bet.toml").is_file()
     assert (tmp_path / "universes" / "liquid-50.toml").is_file()
@@ -113,10 +120,12 @@ def test_initializes_complete_zero_model_project(tmp_path: Path, monkeypatch) ->
     repeated = runner.invoke(app, ["init"])
     assert repeated.exit_code == 0
     assert f"Already initialized in {tmp_path}." in repeated.stdout
+    assert setup_roots == [tmp_path, tmp_path]
     assert (tmp_path / "stockrank.toml").read_text() == config_before
 
 
 def test_init_preserves_valid_partial_assets(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("stockrank.cli._run_setup", lambda root: None)
     existing_mode = tmp_path / "modes" / "best-bet.toml"
     write_toml(
         existing_mode,
@@ -206,6 +215,7 @@ def test_init_refuses_invalid_existing_config_without_writing(
 
 def test_init_preserves_valid_customized_project(tmp_path: Path, monkeypatch) -> None:
     _project(tmp_path)
+    monkeypatch.setattr("stockrank.cli._run_setup", lambda root: None)
     before = {
         path.relative_to(tmp_path): path.read_bytes()
         for path in tmp_path.rglob("*")
@@ -233,6 +243,7 @@ def test_lists_and_shows_saved_assets_and_redacted_model(tmp_path: Path, monkeyp
     assert "best-bet" in runner.invoke(app, ["mode", "show", "best-bet"]).stdout
 
     output = runner.invoke(app, ["model", "show", "deepseek"]).stdout
+    assert '"provider": "deepseek"' in output
     assert "https://api.deepseek.com" in output
     assert "system keyring" in output
     assert "secret-value" not in output
@@ -253,6 +264,8 @@ def test_adds_multiple_model_profiles_and_stores_keys_outside_toml(
             "model",
             "add",
             "openrouter",
+            "--provider",
+            "openrouter",
             "--base-url",
             "https://openrouter.ai/api/v1",
             "--model",
@@ -266,6 +279,7 @@ def test_adds_multiple_model_profiles_and_stores_keys_outside_toml(
     assert "Saved model profile 'openrouter' and made default." in added.stdout
     config = load_app_config(tmp_path)
     assert sorted(config.models) == ["deepseek", "openrouter"]
+    assert config.models["openrouter"].provider == "openrouter"
     assert config.defaults.model == "openrouter"
     assert store.require_llm_key("openrouter") == "openrouter-secret"
     assert "openrouter-secret" not in (tmp_path / "stockrank.toml").read_text()
@@ -275,6 +289,8 @@ def test_adds_multiple_model_profiles_and_stores_keys_outside_toml(
         [
             "model",
             "add",
+            "example",
+            "--provider",
             "example",
             "--base-url",
             "https://example.com/v1",
@@ -293,6 +309,7 @@ def test_first_added_model_becomes_default(tmp_path: Path, monkeypatch) -> None:
     store = CredentialStore(MemoryKeyring())
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("stockrank.cli._credentials", lambda: store)
+    monkeypatch.setattr("stockrank.cli._run_setup", lambda root: None)
     assert runner.invoke(app, ["init"]).exit_code == 0
 
     added = runner.invoke(
@@ -300,6 +317,8 @@ def test_first_added_model_becomes_default(tmp_path: Path, monkeypatch) -> None:
         [
             "model",
             "add",
+            "openrouter",
+            "--provider",
             "openrouter",
             "--base-url",
             "https://openrouter.ai/api/v1",

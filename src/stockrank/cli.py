@@ -19,10 +19,15 @@ from .config import (
     load_mode,
     model_config,
     read_toml,
-    save_model_config,
     set_default_model,
 )
 from .credentials import CredentialStore
+from .model_catalog import ModelsDevClient
+from .setup_wizard import (
+    TerminalSetupPrompts,
+    configure_setup,
+    save_model_profile_with_key,
+)
 
 console = Console()
 app = typer.Typer(
@@ -68,6 +73,15 @@ def _prompt_secret(label: str) -> str:
     )
 
 
+def _run_setup(root: Path) -> None:
+    configure_setup(
+        root,
+        credentials=_credentials(),
+        prompts=TerminalSetupPrompts(console),
+        catalog=ModelsDevClient(),
+    )
+
+
 @app.command("init")
 def init_cmd() -> None:
     try:
@@ -75,14 +89,15 @@ def init_cmd() -> None:
         result = initialize_project(root)
         if result.already_initialized:
             console.print(f"Already initialized in {root}.", soft_wrap=True)
-            return
-        console.print(f"Initialized stockrank project in {root}.", soft_wrap=True)
-        created = ", ".join(str(path.relative_to(root)) for path in result.created)
-        console.print(f"Created {created}.")
-        if result.preserved:
-            preserved = ", ".join(str(path.relative_to(root)) for path in result.preserved)
-            console.print(f"Preserved {preserved}.")
-        console.print("Next: stockrank model add NAME --base-url URL --model MODEL")
+        else:
+            console.print(f"Initialized stockrank project in {root}.", soft_wrap=True)
+            created = ", ".join(str(path.relative_to(root)) for path in result.created)
+            console.print(f"Created {created}.")
+            if result.preserved:
+                preserved = ", ".join(str(path.relative_to(root)) for path in result.preserved)
+                console.print(f"Preserved {preserved}.")
+        _run_setup(root)
+        console.print("Setup complete.")
     except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
         _fail(exc)
 
@@ -234,6 +249,7 @@ def model_show_cmd(name: Annotated[str, typer.Argument(help="Model profile name.
             json.dumps(
                 {
                     "name": profile.name,
+                    "provider": profile.provider,
                     "base_url": profile.base_url,
                     "model": profile.model,
                     "api_key_storage": "system keyring",
@@ -254,6 +270,10 @@ def model_show_cmd(name: Annotated[str, typer.Argument(help="Model profile name.
 @model_app.command("add")
 def model_add_cmd(
     name: Annotated[str, typer.Argument(help="Unique model profile name.")],
+    provider: Annotated[
+        str,
+        typer.Option("--provider", help="Provider identifier."),
+    ],
     base_url: Annotated[
         str,
         typer.Option("--base-url", help="OpenAI-compatible API base URL."),
@@ -295,6 +315,7 @@ def model_add_cmd(
         root = _require_initialized()
         profile = ModelConfig(
             name=name,
+            provider=provider,
             base_url=base_url,
             model=model,
             timeout_seconds=timeout_seconds,
@@ -304,21 +325,14 @@ def model_add_cmd(
             reasoning_effort=reasoning_effort,
         )
         credentials = _credentials()
-        previous_key = credentials.get_llm_key(name)
-        credentials.set_llm_key(name, _prompt_secret(f"API key for {name}"))
-        try:
-            made_default = save_model_config(
-                root,
-                profile,
-                make_default=make_default,
-                replace=replace,
-            )
-        except Exception:
-            if previous_key is None:
-                credentials.delete_llm_key(name)
-            else:
-                credentials.set_llm_key(name, previous_key)
-            raise
+        made_default = save_model_profile_with_key(
+            root,
+            profile,
+            _prompt_secret(f"API key for {name}"),
+            credentials,
+            make_default=make_default,
+            replace_existing=replace,
+        )
         suffix = " and made default" if made_default else ""
         console.print(f"Saved model profile {name!r}{suffix}.")
     except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors

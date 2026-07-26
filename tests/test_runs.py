@@ -25,7 +25,12 @@ def _create(store: RunStore, second: int = 0):
     return store.create(
         universe={"name": "liquid-50", "tickers": ["AAA", "BBB"]},
         mode={"name": "best-bet", "rank_1_meaning": "best forward bet"},
-        model={"name": "deepseek", "base_url": "https://api.deepseek.com", "model": "deepseek-chat"},
+        model={
+            "name": "deepseek",
+            "provider": "deepseek",
+            "base_url": "https://api.deepseek.com",
+            "model": "deepseek-chat",
+        },
         settings={
             "massive": {"base_url": "https://api.massive.com", "concurrency": 4},
             "data": {"minimum_bars": 60},

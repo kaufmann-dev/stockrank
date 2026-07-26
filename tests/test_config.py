@@ -36,6 +36,7 @@ def _project(root: Path) -> None:
             "tracking": {"benchmark": "spy"},
             "models": {
                 "deepseek": {
+                    "provider": "deepseek",
                     "base_url": "https://api.deepseek.com/",
                     "model": "deepseek-chat",
                     "reasoning_effort": "high",
@@ -59,6 +60,7 @@ def test_loads_named_openai_compatible_profile_and_mode(tmp_path: Path) -> None:
     config = load_app_config(tmp_path)
     assert config.defaults.seed == 9
     assert config.tracking.benchmark == "SPY"
+    assert config.models["deepseek"].provider == "deepseek"
     assert config.models["deepseek"].base_url == "https://api.deepseek.com"
     assert config.models["deepseek"].reasoning_effort == "high"
     assert config.models["deepseek"].extra_body == {"thinking": {"type": "enabled"}}
@@ -92,6 +94,7 @@ def test_requires_default_when_models_are_configured(tmp_path: Path) -> None:
             "defaults": {},
             "models": {
                 "deepseek": {
+                    "provider": "deepseek",
                     "base_url": "https://api.deepseek.com",
                     "model": "deepseek-chat",
                 }
@@ -100,6 +103,24 @@ def test_requires_default_when_models_are_configured(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ConfigError, match="defaults.model is required"):
+        load_app_config(tmp_path)
+
+
+def test_requires_provider_for_every_model_profile(tmp_path: Path) -> None:
+    _project(tmp_path)
+    raw = {
+        "sources": {"massive": {}, "sec": {}},
+        "defaults": {"model": "deepseek"},
+        "models": {
+            "deepseek": {
+                "base_url": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+            }
+        },
+    }
+    write_toml(tmp_path / "stockrank.toml", raw)
+
+    with pytest.raises(ConfigError, match="models.deepseek.provider"):
         load_app_config(tmp_path)
 
 
@@ -113,6 +134,7 @@ def test_rejects_unknown_default_profile_and_mismatched_mode(tmp_path: Path) -> 
         "defaults": {"model": "missing"},
         "models": {
             "deepseek": {
+                "provider": "deepseek",
                 "base_url": "https://api.deepseek.com",
                 "model": "deepseek-chat",
             }
@@ -148,6 +170,7 @@ def test_saves_multiple_profiles_and_changes_default(tmp_path: Path) -> None:
         tmp_path,
         ModelConfig(
             name="openrouter",
+            provider="openrouter",
             base_url="https://openrouter.ai/api/v1/",
             model="provider/model",
         ),
@@ -170,6 +193,7 @@ def test_rejects_legacy_environment_credential_fields(tmp_path: Path) -> None:
         "defaults": {"model": "deepseek"},
         "models": {
             "deepseek": {
+                "provider": "deepseek",
                 "base_url": "https://api.deepseek.com",
                 "model": "deepseek-chat",
             }

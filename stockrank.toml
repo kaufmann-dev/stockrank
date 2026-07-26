@@ -26,6 +26,7 @@ seed = 42
 benchmark = "SPY"
 
 [models.deepseek]
+provider = "deepseek"
 base_url = "https://api.deepseek.com"
 model = "deepseek-v4-pro"
 timeout_seconds = 120.0

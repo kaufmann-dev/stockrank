@@ -438,6 +438,7 @@ def _model_from_snapshot(raw: Mapping[str, Any]) -> ModelConfig:
         raise RunError("manifest model.reasoning_effort must be a non-empty string or null")
     return ModelConfig(
         name=_required_string(raw, "name"),
+        provider=_required_string(raw, "provider"),
         base_url=_required_string(raw, "base_url").rstrip("/"),
         model=_required_string(raw, "model"),
         timeout_seconds=_required_float(raw, "timeout_seconds", 0.1),

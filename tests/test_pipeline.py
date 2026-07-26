@@ -47,6 +47,7 @@ def _project(root: Path) -> None:
             },
             "models": {
                 "fake": {
+                    "provider": "fake",
                     "base_url": "https://model.invalid",
                     "model": "fake-model",
                     "concurrency": 1,
@@ -234,6 +235,7 @@ def test_execute_rank_creates_complete_auditable_artifacts(tmp_path: Path) -> No
 
     assert manifest.status == "completed"
     assert manifest.universe["tickers"] == list(TICKERS)
+    assert manifest.model["provider"] == "fake"
     assert paths.universe.is_file()
     assert paths.schedule.is_file()
     assert paths.ranking_csv.is_file()
@@ -409,6 +411,7 @@ def test_model_uses_generic_openai_factory_without_a_completion(
             "defaults": {"model": "deepseek"},
             "models": {
                 "deepseek": {
+                    "provider": "deepseek",
                     "base_url": "https://api.deepseek.com",
                     "model": "deepseek-v4-pro",
                     "timeout_seconds": 45.0,
