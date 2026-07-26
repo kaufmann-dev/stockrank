@@ -111,12 +111,51 @@ def test_initializes_complete_zero_model_project(tmp_path: Path, monkeypatch) ->
     assert runner.invoke(app, ["universe", "list"]).stdout.strip() == "liquid-50"
     config_before = (tmp_path / "stockrank.toml").read_text()
     repeated = runner.invoke(app, ["init"])
-    assert repeated.exit_code == 1
-    assert "files already exist" in repeated.stdout
+    assert repeated.exit_code == 0
+    assert f"Already initialized in {tmp_path}." in repeated.stdout
     assert (tmp_path / "stockrank.toml").read_text() == config_before
 
 
-def test_init_refuses_conflicts_without_partial_output(tmp_path: Path, monkeypatch) -> None:
+def test_init_preserves_valid_partial_assets(tmp_path: Path, monkeypatch) -> None:
+    existing_mode = tmp_path / "modes" / "best-bet.toml"
+    write_toml(
+        existing_mode,
+        {
+            "name": "best-bet",
+            "rank_1_meaning": "custom winner",
+            "prompt": "Use the custom ranking objective.",
+        },
+    )
+    existing_universe = tmp_path / "universes" / "liquid-50.toml"
+    write_toml(
+        existing_universe,
+        {
+            "name": "Custom liquid universe",
+            "kind": "liquidity",
+            "top_n": 25,
+            "lookback_sessions": 10,
+            "min_price": 10.0,
+            "exchanges": ["XNYS"],
+        },
+    )
+    mode_bytes = existing_mode.read_bytes()
+    universe_bytes = existing_universe.read_bytes()
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["init"])
+
+    assert result.exit_code == 0
+    assert "Created stockrank.toml." in result.stdout
+    assert "Preserved modes/best-bet.toml, universes/liquid-50.toml." in result.stdout
+    assert existing_mode.read_bytes() == mode_bytes
+    assert existing_universe.read_bytes() == universe_bytes
+    assert (tmp_path / "stockrank.toml").is_file()
+
+
+def test_init_refuses_invalid_partial_assets_without_writing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     conflicting = tmp_path / "modes" / "best-bet.toml"
     conflicting.parent.mkdir()
     conflicting.write_text("existing")
@@ -125,10 +164,65 @@ def test_init_refuses_conflicts_without_partial_output(tmp_path: Path, monkeypat
     result = runner.invoke(app, ["init"])
 
     assert result.exit_code == 1
-    assert "files already exist: modes/best-bet.toml" in result.stdout
+    assert "existing modes/best-bet.toml is invalid" in result.stdout
     assert conflicting.read_text() == "existing"
     assert not (tmp_path / "stockrank.toml").exists()
     assert not (tmp_path / "universes" / "liquid-50.toml").exists()
+
+
+def test_init_refuses_non_file_starter_target_without_writing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    conflicting = tmp_path / "universes" / "liquid-50.toml"
+    conflicting.mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["init"])
+
+    assert result.exit_code == 1
+    assert "existing universes/liquid-50.toml is not a file" in result.stdout
+    assert conflicting.is_dir()
+    assert not (tmp_path / "stockrank.toml").exists()
+    assert not (tmp_path / "modes").exists()
+
+
+def test_init_refuses_invalid_existing_config_without_writing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "stockrank.toml"
+    config_path.write_text("[invalid")
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["init"])
+
+    assert result.exit_code == 1
+    assert "existing stockrank.toml is invalid" in result.stdout
+    assert config_path.read_text() == "[invalid"
+    assert not (tmp_path / "modes").exists()
+    assert not (tmp_path / "universes").exists()
+
+
+def test_init_preserves_valid_customized_project(tmp_path: Path, monkeypatch) -> None:
+    _project(tmp_path)
+    before = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["init"])
+
+    assert result.exit_code == 0
+    assert f"Already initialized in {tmp_path}." in result.stdout
+    after = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
 
 
 def test_lists_and_shows_saved_assets_and_redacted_model(tmp_path: Path, monkeypatch) -> None:

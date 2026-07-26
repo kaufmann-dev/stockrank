@@ -39,7 +39,9 @@ stockrank model add deepseek \
 The tool installation creates the global `stockrank` command while keeping it linked to this
 checkout. `uv sync --all-extras` separately prepares the development environment. Installation does
 not create project files: `stockrank init` explicitly initializes the current directory with a
-zero-model configuration, the `best-bet` mode, and the `liquid-50` universe.
+zero-model configuration, the `best-bet` mode, and the `liquid-50` universe. Running it again in a
+valid project is a successful no-op. During partial initialization, valid existing starter mode and
+universe files are preserved and only missing files are created.
 
 Both credential commands use hidden confirmation prompts and save secrets in the operating system
 keyring. API keys are never stored in `stockrank.toml` or passed as command-line options. SEC
