@@ -15,7 +15,7 @@ import tomli_w
 from .universe import UniverseError, load_universe_spec
 
 ENGINE_VERSION = "1"
-RUN_SCHEMA_VERSION = 2
+RUN_SCHEMA_VERSION = 3
 PROFILE_NAMES = frozenset({"low", "medium", "high"})
 DEFAULT_SEC_USER_AGENT = "stockrank/1.0 (https://github.com/kaufmann-dev/stockrank)"
 _PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
@@ -181,6 +181,7 @@ class DataConfig:
 @dataclass(frozen=True)
 class ModelConfig:
     name: str
+    provider: str
     base_url: str
     model: str
     timeout_seconds: float = 120.0
@@ -243,6 +244,7 @@ def load_app_config(root: Path) -> AppConfig:
         unexpected = sorted(
             set(model_raw)
             - {
+                "provider",
                 "base_url",
                 "model",
                 "timeout_seconds",
@@ -262,6 +264,7 @@ def load_app_config(root: Path) -> AppConfig:
         _validate_http_url(base_url, f"models.{name}.base_url")
         models[name] = ModelConfig(
             name=declared_name,
+            provider=_identifier(model_raw.get("provider"), f"models.{name}.provider"),
             base_url=base_url,
             model=_string(model_raw.get("model"), f"models.{name}.model"),
             timeout_seconds=_number(
@@ -469,12 +472,26 @@ def _validate_http_url(value: str, label: str) -> None:
         raise ConfigError(f"{label} must be an absolute HTTP(S) URL")
 
 
+def _identifier(raw: Any, label: str) -> str:
+    value = _string(raw, label)
+    if not _PROFILE_NAME_RE.fullmatch(value):
+        raise ConfigError(f"{label} may contain only letters, numbers, '.', '_' and '-'")
+    return value
+
+
+def validate_model_profile(profile: ModelConfig) -> None:
+    _model_entry(profile)
+
+
 def _model_entry(profile: ModelConfig) -> dict[str, Any]:
-    if not _PROFILE_NAME_RE.fullmatch(profile.name):
-        raise ConfigError("model profile name may contain only letters, numbers, '.', '_' and '-'")
+    name = _identifier(profile.name, "model profile name")
+    if name != profile.name:
+        raise ConfigError("model profile name must not have leading or trailing whitespace")
+    provider = _identifier(profile.provider, "model provider")
     base_url = _string(profile.base_url, "model base_url").rstrip("/")
     _validate_http_url(base_url, "model base_url")
     entry: dict[str, Any] = {
+        "provider": provider,
         "base_url": base_url,
         "model": _string(profile.model, "model"),
         "timeout_seconds": _number(
