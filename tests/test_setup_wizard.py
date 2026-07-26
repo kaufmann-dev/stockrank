@@ -4,6 +4,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
+from prompt_toolkit.styles import Style
+from rich.console import Console
 
 from stockrank.config import ModelConfig, initialize_project, load_app_config, write_toml
 from stockrank.credentials import CredentialStore
@@ -11,6 +13,7 @@ from stockrank.model_catalog import CatalogError, CatalogModel, CatalogProvider
 from stockrank.setup_wizard import (
     SetupCancelled,
     SetupPrompts,
+    TerminalSetupPrompts,
     configure_setup,
     save_model_profile_with_key,
 )
@@ -114,6 +117,35 @@ def _configured_project(root: Path) -> None:
             },
         },
     )
+
+
+def test_terminal_autocomplete_uses_dark_high_contrast_menu(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    question = object()
+
+    def autocomplete(message: str, **kwargs):
+        captured["message"] = message
+        captured.update(kwargs)
+        return question
+
+    monkeypatch.setattr("stockrank.setup_wizard.questionary.autocomplete", autocomplete)
+    monkeypatch.setattr("stockrank.setup_wizard._unsafe_ask", lambda value: "Alpha")
+
+    selected = TerminalSetupPrompts(Console()).autocomplete("Provider", ["Alpha", "Beta"])
+
+    assert selected == "Alpha"
+    assert captured["message"] == "Provider"
+    assert captured["choices"] == ["Alpha", "Beta"]
+    style = captured["style"]
+    assert isinstance(style, Style)
+    rules = dict(style.style_rules)
+    assert rules["completion-menu"] == "fg:#e5e7eb bg:#1f2937"
+    assert rules["completion-menu.completion"] == "fg:#e5e7eb bg:#1f2937 nobold"
+    assert rules["completion-menu.completion.current"] == (
+        "fg:#ffffff bg:#2563eb noreverse"
+    )
+    assert rules["answer"] == "fg:#e5e7eb"
+    assert rules["selected"] == "fg:#ffffff bg:#2563eb bold noreverse"
 
 
 def test_fresh_setup_configures_model_and_both_keyring_secrets(tmp_path: Path) -> None:
