@@ -1,13 +1,40 @@
-[api]
-provider = "massive"
+[sources.massive]
+api_key_env = "MASSIVE_API_KEY"
+base_url = "https://api.massive.com"
+concurrency = 4
+
+[sources.sec]
+user_agent_env = "SEC_USER_AGENT"
+base_url = "https://data.sec.gov"
+requests_per_second = 8.0
 
 [data]
-price_history_years = 2
-news_items = 10
-financial_periods = 8
+price_history_days = 730
+liquidity_lookback_sessions = 20
+news_items = 20
+filing_items = 10
+insider_items = 20
+min_price_bars = 60
+evidence_char_budget = 12000
 
 [defaults]
-strategy = "core"
+model = "deepseek"
+mode = "best-bet"
+profile = "medium"
+seed = 42
 
 [tracking]
 benchmark = "SPY"
+
+[models.deepseek]
+base_url = "https://api.deepseek.com"
+model = "deepseek-v4-pro"
+api_key_env = "DEEPSEEK_API_KEY"
+timeout_seconds = 120.0
+max_retries = 2
+concurrency = 4
+max_tokens = 4096
+reasoning_effort = "high"
+
+[models.deepseek.extra_body.thinking]
+type = "enabled"
