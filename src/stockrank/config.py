@@ -12,6 +12,8 @@ from urllib.parse import urlparse
 
 import tomli_w
 
+from .universe import UniverseError, load_universe_spec
+
 ENGINE_VERSION = "1"
 RUN_SCHEMA_VERSION = 2
 PROFILE_NAMES = frozenset({"low", "medium", "high"})
@@ -28,23 +30,76 @@ class ConfigError(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class InitializationResult:
+    already_initialized: bool
+    created: tuple[Path, ...] = ()
+    preserved: tuple[Path, ...] = ()
+
+
 def is_initialized(root: Path) -> bool:
     return (root / "stockrank.toml").is_file()
 
 
-def initialize_project(root: Path) -> tuple[Path, ...]:
-    targets = tuple(root / relative for relative in _STARTER_FILES)
-    conflicts = [target for target in targets if target.exists()]
-    if conflicts:
-        rendered = ", ".join(str(path.relative_to(root)) for path in conflicts)
-        raise ConfigError(f"cannot initialize because these files already exist: {rendered}")
+def initialize_project(root: Path) -> InitializationResult:
+    config_path = root / "stockrank.toml"
+    if config_path.exists():
+        if not config_path.is_file():
+            raise ConfigError("cannot initialize because stockrank.toml is not a file")
+        try:
+            load_app_config(root)
+        except ConfigError as exc:
+            raise ConfigError(
+                f"cannot initialize because existing stockrank.toml is invalid: {exc}"
+            ) from exc
+        return InitializationResult(already_initialized=True)
 
+    asset_paths = (
+        root / "modes" / "best-bet.toml",
+        root / "universes" / "liquid-50.toml",
+    )
+    preserved: list[Path] = []
+    for path in asset_paths:
+        if not path.exists():
+            continue
+        if not path.is_file():
+            raise ConfigError(
+                f"cannot initialize because existing {path.relative_to(root)} is not a file"
+            )
+        try:
+            if path == asset_paths[0]:
+                load_mode(root, "best-bet")
+            else:
+                load_universe_spec(path)
+        except (ConfigError, UniverseError) as exc:
+            raise ConfigError(
+                f"cannot initialize because existing {path.relative_to(root)} is invalid: {exc}"
+            ) from exc
+        preserved.append(path)
+
+    created: list[Path] = []
     starter = files("stockrank").joinpath("starter")
-    for relative, target in zip(_STARTER_FILES, targets, strict=True):
+    for target in asset_paths:
+        if target in preserved:
+            continue
+        relative = target.relative_to(root)
         resource = starter.joinpath(*relative.parts)
         raw = tomllib.loads(resource.read_text(encoding="utf-8"))
         write_toml(target, raw)
-    return targets
+        created.append(target)
+
+    raw = tomllib.loads(starter.joinpath("stockrank.toml").read_text(encoding="utf-8"))
+    write_toml(config_path, raw)
+    created.append(config_path)
+    ordered_created = tuple(root / relative for relative in _STARTER_FILES if root / relative in created)
+    ordered_preserved = tuple(
+        root / relative for relative in _STARTER_FILES if root / relative in preserved
+    )
+    return InitializationResult(
+        already_initialized=False,
+        created=ordered_created,
+        preserved=ordered_preserved,
+    )
 
 
 def read_toml(path: Path) -> dict[str, Any]:

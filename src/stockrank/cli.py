@@ -72,10 +72,16 @@ def _prompt_secret(label: str) -> str:
 def init_cmd() -> None:
     try:
         root = _root()
-        created = initialize_project(root)
-        relative = ", ".join(str(path.relative_to(root)) for path in created)
-        console.print(f"Initialized stockrank project in {root}.")
-        console.print(f"Created {relative}.")
+        result = initialize_project(root)
+        if result.already_initialized:
+            console.print(f"Already initialized in {root}.", soft_wrap=True)
+            return
+        console.print(f"Initialized stockrank project in {root}.", soft_wrap=True)
+        created = ", ".join(str(path.relative_to(root)) for path in result.created)
+        console.print(f"Created {created}.")
+        if result.preserved:
+            preserved = ", ".join(str(path.relative_to(root)) for path in result.preserved)
+            console.print(f"Preserved {preserved}.")
         console.print("Next: stockrank model add NAME --base-url URL --model MODEL")
     except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
         _fail(exc)
