@@ -27,9 +27,13 @@ Use Python 3.11 or newer and `uv`:
 
 ```sh
 uv sync --all-extras
-uv run stockrank massive set-key
-uv run stockrank model set-key deepseek
+uv tool install --editable . --force
+stockrank massive set-key
+stockrank model set-key deepseek
 ```
+
+The tool installation creates the global `stockrank` command while keeping it linked to this
+checkout. `uv sync --all-extras` separately prepares the development environment.
 
 Both credential commands use hidden confirmation prompts and save secrets in the operating system
 keyring. API keys are never stored in `stockrank.toml` or passed as command-line options. SEC
@@ -51,10 +55,10 @@ The included `deepseek` profile uses the standard OpenAI Python client with
 the CLI:
 
 ```sh
-uv run stockrank model add openrouter \
+stockrank model add openrouter \
   --base-url https://openrouter.ai/api/v1 \
   --model provider/model
-uv run stockrank model default openrouter
+stockrank model default openrouter
 ```
 
 The non-secret profile is saved under `[models.<name>]`; its API key is saved separately under the
