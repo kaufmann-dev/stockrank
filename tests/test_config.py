@@ -5,12 +5,15 @@ from pathlib import Path
 import pytest
 
 from stockrank.config import (
+    DEFAULT_SEC_USER_AGENT,
     ConfigError,
+    ModelConfig,
     available_names,
     load_app_config,
     load_mode,
     model_config,
-    require_environment,
+    save_model_config,
+    set_default_model,
     write_toml,
 )
 
@@ -20,8 +23,8 @@ def _project(root: Path) -> None:
         root / "stockrank.toml",
         {
             "sources": {
-                "massive": {"api_key_env": "MASSIVE_KEY"},
-                "sec": {"user_agent_env": "SEC_AGENT"},
+                "massive": {},
+                "sec": {},
             },
             "data": {"price_history_days": 365, "min_price_bars": 60},
             "defaults": {
@@ -35,7 +38,6 @@ def _project(root: Path) -> None:
                 "deepseek": {
                     "base_url": "https://api.deepseek.com/",
                     "model": "deepseek-chat",
-                    "api_key_env": "DEEPSEEK_KEY",
                     "reasoning_effort": "high",
                     "extra_body": {"thinking": {"type": "enabled"}},
                 }
@@ -60,6 +62,7 @@ def test_loads_named_openai_compatible_profile_and_mode(tmp_path: Path) -> None:
     assert config.models["deepseek"].base_url == "https://api.deepseek.com"
     assert config.models["deepseek"].reasoning_effort == "high"
     assert config.models["deepseek"].extra_body == {"thinking": {"type": "enabled"}}
+    assert config.sec.user_agent == DEFAULT_SEC_USER_AGENT
     assert model_config(tmp_path).model == "deepseek-chat"
     assert load_mode(tmp_path, "best-bet").rank_1_meaning == "best bet"
     assert available_names(tmp_path, "modes") == ["best-bet"]
@@ -69,15 +72,14 @@ def test_rejects_unknown_default_profile_and_mismatched_mode(tmp_path: Path) -> 
     _project(tmp_path)
     raw = {
         "sources": {
-            "massive": {"api_key_env": "MASSIVE_KEY"},
-            "sec": {"user_agent_env": "SEC_AGENT"},
+            "massive": {},
+            "sec": {},
         },
         "defaults": {"model": "missing"},
         "models": {
             "deepseek": {
                 "base_url": "https://api.deepseek.com",
                 "model": "deepseek-chat",
-                "api_key_env": "DEEPSEEK_KEY",
             }
         },
     }
@@ -105,9 +107,40 @@ def test_rejects_unknown_default_profile_and_mismatched_mode(tmp_path: Path) -> 
         load_mode(tmp_path, "legacy")
 
 
-def test_requires_environment_without_exposing_value(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("MISSING_STOCKRANK_SECRET", raising=False)
-    with pytest.raises(ConfigError, match="MISSING_STOCKRANK_SECRET"):
-        require_environment("MISSING_STOCKRANK_SECRET")
-    monkeypatch.setenv("MISSING_STOCKRANK_SECRET", "private")
-    assert require_environment("MISSING_STOCKRANK_SECRET") == "private"
+def test_saves_multiple_profiles_and_changes_default(tmp_path: Path) -> None:
+    _project(tmp_path)
+    save_model_config(
+        tmp_path,
+        ModelConfig(
+            name="openrouter",
+            base_url="https://openrouter.ai/api/v1/",
+            model="provider/model",
+        ),
+    )
+    set_default_model(tmp_path, "openrouter")
+
+    config = load_app_config(tmp_path)
+    assert sorted(config.models) == ["deepseek", "openrouter"]
+    assert config.models["openrouter"].base_url == "https://openrouter.ai/api/v1"
+    assert config.defaults.model == "openrouter"
+
+
+def test_rejects_legacy_environment_credential_fields(tmp_path: Path) -> None:
+    _project(tmp_path)
+    raw = {
+        "sources": {
+            "massive": {"api_key_env": "MASSIVE_KEY"},
+            "sec": {},
+        },
+        "defaults": {"model": "deepseek"},
+        "models": {
+            "deepseek": {
+                "base_url": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+            }
+        },
+    }
+    write_toml(tmp_path / "stockrank.toml", raw)
+
+    with pytest.raises(ConfigError, match="unknown fields"):
+        load_app_config(tmp_path)

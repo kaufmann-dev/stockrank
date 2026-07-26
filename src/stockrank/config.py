@@ -1,18 +1,21 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import tomli_w
-from dotenv import load_dotenv
 
 ENGINE_VERSION = "1"
-RUN_SCHEMA_VERSION = 1
+RUN_SCHEMA_VERSION = 2
 PROFILE_NAMES = frozenset({"low", "medium", "high"})
+DEFAULT_SEC_USER_AGENT = "stockrank/1.0 (https://github.com/kaufmann-dev/stockrank)"
+_PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 
 class ConfigError(RuntimeError):
@@ -73,14 +76,13 @@ def _number(raw: Any, label: str, *, minimum: float = 0.0) -> float:
 
 @dataclass(frozen=True)
 class MassiveConfig:
-    api_key_env: str
     base_url: str = "https://api.massive.com"
     concurrency: int = 4
 
 
 @dataclass(frozen=True)
 class SecConfig:
-    user_agent_env: str
+    user_agent: str = DEFAULT_SEC_USER_AGENT
     base_url: str = "https://data.sec.gov"
     requests_per_second: float = 8.0
 
@@ -101,7 +103,6 @@ class ModelConfig:
     name: str
     base_url: str
     model: str
-    api_key_env: str
     timeout_seconds: float = 120.0
     max_retries: int = 2
     concurrency: int = 4
@@ -155,14 +156,34 @@ def load_app_config(root: Path) -> AppConfig:
     for name, value in models_raw.items():
         model_raw = _table(value, f"models.{name}")
         declared_name = _string(name, "model profile name")
+        if not _PROFILE_NAME_RE.fullmatch(declared_name):
+            raise ConfigError(
+                f"model profile name {declared_name!r} may contain only letters, numbers, '.', '_' and '-'"
+            )
+        unexpected = sorted(
+            set(model_raw)
+            - {
+                "base_url",
+                "model",
+                "timeout_seconds",
+                "max_retries",
+                "concurrency",
+                "max_tokens",
+                "reasoning_effort",
+                "extra_body",
+            }
+        )
+        if unexpected:
+            raise ConfigError(f"models.{name} contains unknown fields: {', '.join(unexpected)}")
         extra_body = model_raw.get("extra_body", {})
         if not isinstance(extra_body, dict):
             raise ConfigError(f"models.{name}.extra_body must be a table")
+        base_url = _string(model_raw.get("base_url"), f"models.{name}.base_url").rstrip("/")
+        _validate_http_url(base_url, f"models.{name}.base_url")
         models[name] = ModelConfig(
             name=declared_name,
-            base_url=_string(model_raw.get("base_url"), f"models.{name}.base_url").rstrip("/"),
+            base_url=base_url,
             model=_string(model_raw.get("model"), f"models.{name}.model"),
-            api_key_env=_string(model_raw.get("api_key_env"), f"models.{name}.api_key_env"),
             timeout_seconds=_number(
                 model_raw.get("timeout_seconds", 120.0),
                 f"models.{name}.timeout_seconds",
@@ -203,12 +224,15 @@ def load_app_config(root: Path) -> AppConfig:
     if defaults.profile not in PROFILE_NAMES:
         raise ConfigError(f"defaults.profile must be one of {sorted(PROFILE_NAMES)}")
 
+    massive_unexpected = sorted(set(massive_raw) - {"base_url", "concurrency"})
+    if massive_unexpected:
+        raise ConfigError("sources.massive contains unknown fields: " + ", ".join(massive_unexpected))
+    sec_unexpected = sorted(set(sec_raw) - {"user_agent", "base_url", "requests_per_second"})
+    if sec_unexpected:
+        raise ConfigError("sources.sec contains unknown fields: " + ", ".join(sec_unexpected))
+
     return AppConfig(
         massive=MassiveConfig(
-            api_key_env=_string(
-                massive_raw.get("api_key_env", "MASSIVE_API_KEY"),
-                "sources.massive.api_key_env",
-            ),
             base_url=_string(
                 massive_raw.get("base_url", "https://api.massive.com"),
                 "sources.massive.base_url",
@@ -220,9 +244,9 @@ def load_app_config(root: Path) -> AppConfig:
             ),
         ),
         sec=SecConfig(
-            user_agent_env=_string(
-                sec_raw.get("user_agent_env", "SEC_USER_AGENT"),
-                "sources.sec.user_agent_env",
+            user_agent=_string(
+                sec_raw.get("user_agent", DEFAULT_SEC_USER_AGENT),
+                "sources.sec.user_agent",
             ),
             base_url=_string(
                 sec_raw.get("base_url", "https://data.sec.gov"),
@@ -267,17 +291,6 @@ def load_app_config(root: Path) -> AppConfig:
     )
 
 
-def load_environment(root: Path) -> None:
-    load_dotenv(root / ".env", override=False)
-
-
-def require_environment(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    if not value:
-        raise ConfigError(f"environment variable {name} is required")
-    return value
-
-
 def load_mode(root: Path, name: str) -> Mode:
     raw = read_toml(root / "modes" / f"{name}.toml")
     unexpected = sorted(set(raw) - {"name", "rank_1_meaning", "prompt"})
@@ -315,3 +328,90 @@ def profile_name(root: Path, requested: str | None = None) -> str:
     if value not in PROFILE_NAMES:
         raise ConfigError(f"profile must be one of {sorted(PROFILE_NAMES)}")
     return value
+
+
+def save_model_config(
+    root: Path,
+    profile: ModelConfig,
+    *,
+    make_default: bool = False,
+    replace: bool = False,
+) -> None:
+    entry = _model_entry(profile)
+    raw = read_toml(root / "stockrank.toml")
+    models = _table(raw.get("models"), "models")
+    if profile.name in models and not replace:
+        raise ConfigError(f"model profile {profile.name!r} already exists; use --replace to update it")
+    models[profile.name] = entry
+    if make_default:
+        defaults = _table(raw.get("defaults"), "defaults")
+        defaults["model"] = profile.name
+    write_toml(root / "stockrank.toml", raw)
+    load_app_config(root)
+
+
+def delete_model_config(root: Path, name: str) -> None:
+    raw = read_toml(root / "stockrank.toml")
+    models = _table(raw.get("models"), "models")
+    if name not in models:
+        raise ConfigError(f"unknown model profile {name!r}")
+    defaults = _table(raw.get("defaults"), "defaults")
+    if defaults.get("model") == name:
+        raise ConfigError(f"cannot remove default model profile {name!r}; make another profile default first")
+    del models[name]
+    write_toml(root / "stockrank.toml", raw)
+    load_app_config(root)
+
+
+def set_default_model(root: Path, name: str) -> None:
+    raw = read_toml(root / "stockrank.toml")
+    models = _table(raw.get("models"), "models")
+    if name not in models:
+        raise ConfigError(f"unknown model profile {name!r}")
+    defaults = _table(raw.get("defaults"), "defaults")
+    defaults["model"] = name
+    write_toml(root / "stockrank.toml", raw)
+    load_app_config(root)
+
+
+def _validate_http_url(value: str, label: str) -> None:
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ConfigError(f"{label} must be an absolute HTTP(S) URL")
+
+
+def _model_entry(profile: ModelConfig) -> dict[str, Any]:
+    if not _PROFILE_NAME_RE.fullmatch(profile.name):
+        raise ConfigError("model profile name may contain only letters, numbers, '.', '_' and '-'")
+    base_url = _string(profile.base_url, "model base_url").rstrip("/")
+    _validate_http_url(base_url, "model base_url")
+    entry: dict[str, Any] = {
+        "base_url": base_url,
+        "model": _string(profile.model, "model"),
+        "timeout_seconds": _number(
+            profile.timeout_seconds,
+            "model timeout_seconds",
+            minimum=0.1,
+        ),
+        "max_retries": _integer(profile.max_retries, "model max_retries"),
+        "concurrency": _integer(
+            profile.concurrency,
+            "model concurrency",
+            minimum=1,
+        ),
+        "max_tokens": _integer(
+            profile.max_tokens,
+            "model max_tokens",
+            minimum=1,
+        ),
+    }
+    if profile.reasoning_effort is not None:
+        entry["reasoning_effort"] = _string(
+            profile.reasoning_effort,
+            "reasoning_effort",
+        )
+    if not isinstance(profile.extra_body, dict):
+        raise ConfigError("model extra_body must be a table")
+    if profile.extra_body:
+        entry["extra_body"] = dict(profile.extra_body)
+    return entry

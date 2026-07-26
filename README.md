@@ -27,17 +27,14 @@ Use Python 3.11 or newer and `uv`:
 
 ```sh
 uv sync --all-extras
+uv run stockrank massive set-key
+uv run stockrank model set-key deepseek
 ```
 
-Copy the environment template and provide your own credentials and SEC contact identity:
-
-```sh
-cp .env.example .env
-```
-
-`SEC_USER_AGENT` must identify the application and a real contact address, as required by the SEC's
-fair-access policy. Secret values stay in `.env`; TOML files contain only environment-variable
-names.
+Both credential commands use hidden confirmation prompts and save secrets in the operating system
+keyring. API keys are never stored in `stockrank.toml` or passed as command-line options. SEC
+requests use the repository URL as their default application identity; `sources.sec.user_agent` can
+override it when a different identity is appropriate.
 
 ## Configuration
 
@@ -50,10 +47,20 @@ names.
 - named OpenAI-compatible model profiles.
 
 The included `deepseek` profile uses the standard OpenAI Python client with
-`https://api.deepseek.com`. Add another table under `[models.<name>]` to use another compatible
-provider. Each run selects exactly one profile and freezes its resolved non-secret settings.
-Provider-specific controls such as DeepSeek thinking mode and `reasoning_effort` remain explicit in
-that profile.
+`https://api.deepseek.com`. Add and securely authenticate any other OpenAI-compatible provider from
+the CLI:
+
+```sh
+uv run stockrank model add openrouter \
+  --base-url https://openrouter.ai/api/v1 \
+  --model provider/model
+uv run stockrank model default openrouter
+```
+
+The non-secret profile is saved under `[models.<name>]`; its API key is saved separately under the
+same profile name in the operating system keyring. Each run selects exactly one profile and freezes
+its resolved non-secret settings. Provider-specific controls such as DeepSeek thinking mode and
+`reasoning_effort` remain explicit in that profile.
 
 Modes live in `modes/*.toml` and contain `name`, `rank_1_meaning`, and one complete `prompt`.
 `best-bet` is the only bundled mode. Custom ranking instructions belong in another saved mode file;
@@ -78,7 +85,9 @@ stockrank universe show liquid-50
 stockrank universe resolve liquid-50
 stockrank mode show best-bet
 stockrank model list
+stockrank model status deepseek
 stockrank model test deepseek
+stockrank massive status
 ```
 
 Start the default medium-quality ranking:

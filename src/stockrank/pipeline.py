@@ -20,11 +20,10 @@ from .config import (
     ModelConfig,
     SecConfig,
     load_app_config,
-    load_environment,
     load_mode,
     profile_name,
-    require_environment,
 )
+from .credentials import CredentialStore
 from .evidence import (
     EvidencePack,
     EvidenceSettings,
@@ -78,6 +77,7 @@ def execute_rank(
     massive_client: MassiveClient | None = None,
     sec_client: SecClient | None = None,
     judge: RaceJudge | None = None,
+    credential_store: CredentialStore | None = None,
     bootstrap_samples: int = DEFAULT_BOOTSTRAP_SAMPLES,
 ) -> str:
     """Run or resume the complete ranking pipeline."""
@@ -85,7 +85,7 @@ def execute_rank(
     root = Path(root)
     console = console or Console()
     current = _utc_now(now)
-    load_environment(root)
+    credentials = credential_store or CredentialStore()
     store = RunStore(root)
     manifest: RunManifest | None = None
     try:
@@ -99,11 +99,9 @@ def execute_rank(
             except KeyError as exc:
                 raise ConfigError(f"unknown model profile {selected_model_name!r}") from exc
             _require_credentials(
-                preflight_config.massive,
-                preflight_config.sec,
+                credentials,
                 preflight_model,
                 massive_supplied=massive_client is not None,
-                sec_supplied=sec_client is not None,
                 judge_supplied=judge is not None,
             )
             (
@@ -123,6 +121,7 @@ def execute_rank(
                 requested_profile=profile_name,
                 now=current,
                 massive_client=massive_client,
+                credentials=credentials,
             )
         else:
             if any(value is not None for value in (universe_name, mode_name, model_name, profile_name)):
@@ -133,18 +132,19 @@ def execute_rank(
             mode = _mode_from_snapshot(manifest.mode)
             frozen_universe = _universe_from_snapshot(manifest.universe)
             _require_credentials(
-                source_config,
-                sec_config,
+                credentials,
                 model,
                 massive_supplied=massive_client is not None,
-                sec_supplied=sec_client is not None,
                 judge_supplied=judge is not None,
             )
             store.resume(resume_id, now=current)
 
-        massive = massive_client or _massive_client(source_config)
+        massive = massive_client or _massive_client(source_config, credentials)
         sec = sec_client or _sec_client(sec_config)
-        race_judge = judge or OpenAIRaceJudge(model)
+        race_judge = judge or OpenAIRaceJudge(
+            model,
+            api_key=credentials.require_llm_key(model.name),
+        )
         paths = store.paths(manifest.id)
         evidence_settings = _evidence_settings(data_config)
 
@@ -236,14 +236,15 @@ def resolve_universe(
     console: Console | None = None,
     as_of: date | None = None,
     massive_client: MassiveClient | None = None,
+    credential_store: CredentialStore | None = None,
 ) -> dict[str, object]:
     """Resolve one saved universe definition without creating a run."""
 
     del console
     root = Path(root)
-    load_environment(root)
     config = load_app_config(root)
-    client = massive_client or _massive_client(config.massive)
+    credentials = credential_store or CredentialStore()
+    client = massive_client or _massive_client(config.massive, credentials)
     spec = load_universe_spec(root / "universes" / f"{name}.toml")
     resolved = resolve_universe_spec(spec, client, as_of or datetime.now(UTC).date())
     return resolved.as_dict()
@@ -254,19 +255,20 @@ def test_model(
     name: str | None = None,
     *,
     client_factory: Any = OpenAI,
+    credential_store: CredentialStore | None = None,
 ) -> str:
     """Check authentication and configured model availability with no completion call."""
 
     root = Path(root)
-    load_environment(root)
     config = load_app_config(root)
+    credentials = credential_store or CredentialStore()
     selected = name or config.defaults.model
     try:
         model = config.models[selected]
     except KeyError as exc:
         raise ConfigError(f"unknown model profile {selected!r}") from exc
     client = client_factory(
-        api_key=require_environment(model.api_key_env),
+        api_key=credentials.require_llm_key(model.name),
         base_url=model.base_url,
         timeout=model.timeout_seconds,
         max_retries=model.max_retries,
@@ -290,15 +292,16 @@ def track_rankings(
     all_runs: bool,
     console: Console | None = None,
     massive_client: MassiveClient | None = None,
+    credential_store: CredentialStore | None = None,
     end_date: date | None = None,
 ) -> list[str]:
     """Update forward results for one or every completed ranking."""
 
     root = Path(root)
     console = console or Console()
-    load_environment(root)
     config = load_app_config(root)
-    client = massive_client or _massive_client(config.massive)
+    credentials = credential_store or CredentialStore()
+    client = massive_client or _massive_client(config.massive, credentials)
     if all_runs:
         reports = track_all(
             root,
@@ -333,6 +336,7 @@ def _create_run(
     requested_profile: str | None,
     now: datetime,
     massive_client: MassiveClient | None,
+    credentials: CredentialStore,
 ) -> tuple[
     RunManifest,
     MassiveConfig,
@@ -351,7 +355,7 @@ def _create_run(
     except KeyError as exc:
         raise ConfigError(f"unknown model profile {selected_model!r}") from exc
     mode = load_mode(root, selected_mode)
-    massive = massive_client or _massive_client(config.massive)
+    massive = massive_client or _massive_client(config.massive, credentials)
     spec = load_universe_spec(root / "universes" / f"{universe_name}.toml")
     frozen = resolve_universe_spec(spec, massive, now.date())
     manifest = store.create(
@@ -399,12 +403,11 @@ def _settings_from_manifest(
     try:
         return (
             MassiveConfig(
-                api_key_env=_required_string(massive, "api_key_env"),
                 base_url=_required_string(massive, "base_url").rstrip("/"),
                 concurrency=_required_int(massive, "concurrency", 1),
             ),
             SecConfig(
-                user_agent_env=_required_string(sec, "user_agent_env"),
+                user_agent=_required_string(sec, "user_agent"),
                 base_url=_required_string(sec, "base_url").rstrip("/"),
                 requests_per_second=_required_float(sec, "requests_per_second", 0.1),
             ),
@@ -431,7 +434,6 @@ def _model_from_snapshot(raw: Mapping[str, Any]) -> ModelConfig:
         name=_required_string(raw, "name"),
         base_url=_required_string(raw, "base_url").rstrip("/"),
         model=_required_string(raw, "model"),
-        api_key_env=_required_string(raw, "api_key_env"),
         timeout_seconds=_required_float(raw, "timeout_seconds", 0.1),
         max_retries=_required_int(raw, "max_retries", 0),
         concurrency=_required_int(raw, "concurrency", 1),
@@ -776,33 +778,32 @@ def _race_request_payload(
     }
 
 
-def _massive_client(config: MassiveConfig) -> MassiveClient:
+def _massive_client(
+    config: MassiveConfig,
+    credentials: CredentialStore,
+) -> MassiveClient:
     return MassiveClient(
-        require_environment(config.api_key_env),
+        credentials.require_massive_key(),
         base_url=config.base_url,
     )
 
 
 def _require_credentials(
-    massive: MassiveConfig,
-    sec: SecConfig,
+    credentials: CredentialStore,
     model: ModelConfig,
     *,
     massive_supplied: bool,
-    sec_supplied: bool,
     judge_supplied: bool,
 ) -> None:
     if not massive_supplied:
-        require_environment(massive.api_key_env)
-    if not sec_supplied:
-        require_environment(sec.user_agent_env)
+        credentials.require_massive_key()
     if not judge_supplied:
-        require_environment(model.api_key_env)
+        credentials.require_llm_key(model.name)
 
 
 def _sec_client(config: SecConfig) -> SecClient:
     return SecClient(
-        require_environment(config.user_agent_env),
+        config.user_agent,
         base_url=config.base_url,
         rate_limit_per_second=config.requests_per_second,
     )

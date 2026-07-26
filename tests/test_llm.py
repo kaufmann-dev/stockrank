@@ -23,7 +23,6 @@ class Profile:
     name: str = "deepseek"
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-chat"
-    api_key_env: str = "DEEPSEEK_API_KEY"
     timeout_seconds: float = 17.0
     max_retries: int = 3
     concurrency: int = 2
@@ -122,8 +121,8 @@ def test_deepseek_uses_generic_openai_client_configuration_and_message_content()
     profile = Profile(extra_body={"thinking": {"type": "disabled"}})
     judge = OpenAIRaceJudge(
         profile,
+        api_key="secret",
         client_factory=factory,
-        environ={"DEEPSEEK_API_KEY": "secret"},
     )
 
     result = judge.judge(("AAA", "BBB"), evidence(), "Prefer the best bet.")
@@ -260,8 +259,8 @@ def test_judge_many_preserves_request_order() -> None:
 
 
 def test_missing_api_key_is_reported_before_client_creation() -> None:
-    with pytest.raises(RaceModelError, match="DEEPSEEK_API_KEY"):
-        OpenAIRaceJudge(Profile(), environ={})
+    with pytest.raises(RaceModelError, match="model profile 'deepseek'"):
+        OpenAIRaceJudge(Profile())
 
 
 @pytest.mark.parametrize(
