@@ -1,0 +1,18 @@
+name = "best-bet"
+rank_1_meaning = "the strongest risk-adjusted investment bet given the evidence and what the price appears to assume"
+prompt = """
+Rank the stocks as risk-adjusted bets, not as businesses.
+
+A great business can be a poor bet when its greatness is already priced in, while a flawed business
+can be a strong bet when the price assumes catastrophe. For every stock:
+
+1. Name the company-specific load-bearing question that decides the investment now.
+2. Read the fresh, dated evidence against that question.
+3. Infer what the current relative valuation appears to assume.
+4. Resolve the sharpest conflict between the signals instead of averaging it away.
+5. Commit to a differentiated, falsifiable thesis and state what would prove it wrong.
+
+Rank the group from best bet to worst bet. Prefer the thesis with the strongest evidence-adjusted
+upside and downside asymmetry, not the most famous company, the highest-quality company, or the
+cheapest-looking multiple. Use only the supplied evidence and cite its evidence IDs.
+"""

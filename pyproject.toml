@@ -32,6 +32,9 @@ stockrank = "stockrank.cli:app"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+stockrank = ["starter/*.toml", "starter/modes/*.toml", "starter/universes/*.toml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

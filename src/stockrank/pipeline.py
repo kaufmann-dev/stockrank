@@ -94,6 +94,8 @@ def execute_rank(
                 raise ConfigError("universe_name is required for a new run")
             preflight_config = load_app_config(root)
             selected_model_name = model_name or preflight_config.defaults.model
+            if selected_model_name is None:
+                raise ConfigError("no model profiles configured; add one with 'stockrank model add'")
             try:
                 preflight_model = preflight_config.models[selected_model_name]
             except KeyError as exc:
@@ -263,6 +265,8 @@ def test_model(
     config = load_app_config(root)
     credentials = credential_store or CredentialStore()
     selected = name or config.defaults.model
+    if selected is None:
+        raise ConfigError("no model profiles configured; add one with 'stockrank model add'")
     try:
         model = config.models[selected]
     except KeyError as exc:
@@ -349,6 +353,8 @@ def _create_run(
     config = load_app_config(root)
     selected_mode = mode_name or config.defaults.mode
     selected_model = model_name or config.defaults.model
+    if selected_model is None:
+        raise ConfigError("no model profiles configured; add one with 'stockrank model add'")
     selected_profile = profile_name(root, requested_profile)
     try:
         model = config.models[selected_model]

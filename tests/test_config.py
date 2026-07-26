@@ -68,6 +68,41 @@ def test_loads_named_openai_compatible_profile_and_mode(tmp_path: Path) -> None:
     assert available_names(tmp_path, "modes") == ["best-bet"]
 
 
+def test_loads_initialized_config_without_models(tmp_path: Path) -> None:
+    write_toml(
+        tmp_path / "stockrank.toml",
+        {
+            "sources": {"massive": {}, "sec": {}},
+            "defaults": {"mode": "best-bet", "profile": "medium"},
+            "models": {},
+        },
+    )
+
+    config = load_app_config(tmp_path)
+
+    assert config.models == {}
+    assert config.defaults.model is None
+
+
+def test_requires_default_when_models_are_configured(tmp_path: Path) -> None:
+    write_toml(
+        tmp_path / "stockrank.toml",
+        {
+            "sources": {"massive": {}, "sec": {}},
+            "defaults": {},
+            "models": {
+                "deepseek": {
+                    "base_url": "https://api.deepseek.com",
+                    "model": "deepseek-chat",
+                }
+            },
+        },
+    )
+
+    with pytest.raises(ConfigError, match="defaults.model is required"):
+        load_app_config(tmp_path)
+
+
 def test_rejects_unknown_default_profile_and_mismatched_mode(tmp_path: Path) -> None:
     _project(tmp_path)
     raw = {

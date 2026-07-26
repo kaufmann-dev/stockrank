@@ -65,6 +65,72 @@ def test_version_and_new_run_requires_explicit_universe() -> None:
     assert "--universe is required" in result.stdout
 
 
+def test_model_list_reports_uninitialized_project_without_error(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["model", "list"])
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "Not initialized. Run 'stockrank init'."
+    assert list(tmp_path.iterdir()) == []
+    add_result = runner.invoke(
+        app,
+        [
+            "model",
+            "add",
+            "example",
+            "--base-url",
+            "https://example.com/v1",
+            "--model",
+            "example",
+        ],
+    )
+    assert add_result.exit_code == 1
+    assert "project is not initialized" in add_result.stdout
+    assert "API key" not in add_result.stdout
+
+
+def test_initializes_complete_zero_model_project(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["init"])
+
+    assert result.exit_code == 0
+    assert "Initialized stockrank project" in result.stdout
+    assert (tmp_path / "stockrank.toml").is_file()
+    assert (tmp_path / "modes" / "best-bet.toml").is_file()
+    assert (tmp_path / "universes" / "liquid-50.toml").is_file()
+    config = load_app_config(tmp_path)
+    assert config.models == {}
+    assert config.defaults.model is None
+    assert runner.invoke(app, ["model", "list"]).stdout.strip() == "(none)"
+    assert runner.invoke(app, ["mode", "list"]).stdout.strip() == "best-bet"
+    assert runner.invoke(app, ["universe", "list"]).stdout.strip() == "liquid-50"
+    config_before = (tmp_path / "stockrank.toml").read_text()
+    repeated = runner.invoke(app, ["init"])
+    assert repeated.exit_code == 1
+    assert "files already exist" in repeated.stdout
+    assert (tmp_path / "stockrank.toml").read_text() == config_before
+
+
+def test_init_refuses_conflicts_without_partial_output(tmp_path: Path, monkeypatch) -> None:
+    conflicting = tmp_path / "modes" / "best-bet.toml"
+    conflicting.parent.mkdir()
+    conflicting.write_text("existing")
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["init"])
+
+    assert result.exit_code == 1
+    assert "files already exist: modes/best-bet.toml" in result.stdout
+    assert conflicting.read_text() == "existing"
+    assert not (tmp_path / "stockrank.toml").exists()
+    assert not (tmp_path / "universes" / "liquid-50.toml").exists()
+
+
 def test_lists_and_shows_saved_assets_and_redacted_model(tmp_path: Path, monkeypatch) -> None:
     _project(tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -109,7 +175,52 @@ def test_adds_multiple_model_profiles_and_stores_keys_outside_toml(
     assert config.defaults.model == "openrouter"
     assert store.require_llm_key("openrouter") == "openrouter-secret"
     assert "openrouter-secret" not in (tmp_path / "stockrank.toml").read_text()
+
+    second = runner.invoke(
+        app,
+        [
+            "model",
+            "add",
+            "example",
+            "--base-url",
+            "https://example.com/v1",
+            "--model",
+            "example",
+        ],
+        input="example-secret\nexample-secret\n",
+    )
+    assert second.exit_code == 0
+    assert "made default" not in second.stdout
+    assert load_app_config(tmp_path).defaults.model == "openrouter"
     assert "API key stored" in runner.invoke(app, ["model", "status"]).stdout
+
+
+def test_first_added_model_becomes_default(tmp_path: Path, monkeypatch) -> None:
+    store = CredentialStore(MemoryKeyring())
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("stockrank.cli._credentials", lambda: store)
+    assert runner.invoke(app, ["init"]).exit_code == 0
+
+    added = runner.invoke(
+        app,
+        [
+            "model",
+            "add",
+            "openrouter",
+            "--base-url",
+            "https://openrouter.ai/api/v1",
+            "--model",
+            "provider/model",
+        ],
+        input="openrouter-secret\nopenrouter-secret\n",
+    )
+
+    assert added.exit_code == 0
+    assert "Saved model profile 'openrouter' and made default." in added.stdout
+    config = load_app_config(tmp_path)
+    assert config.defaults.model == "openrouter"
+    assert store.require_llm_key("openrouter") == "openrouter-secret"
+    assert "openrouter-secret" not in (tmp_path / "stockrank.toml").read_text()
 
 
 def test_sets_and_clears_keyring_credentials_from_hidden_prompts(

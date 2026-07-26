@@ -28,12 +28,18 @@ Use Python 3.11 or newer and `uv`:
 ```sh
 uv sync --all-extras
 uv tool install --editable . --force
+cd /path/to/a/stockrank-project
+stockrank init
 stockrank massive set-key
-stockrank model set-key deepseek
+stockrank model add deepseek \
+  --base-url https://api.deepseek.com \
+  --model deepseek-v4-pro
 ```
 
 The tool installation creates the global `stockrank` command while keeping it linked to this
-checkout. `uv sync --all-extras` separately prepares the development environment.
+checkout. `uv sync --all-extras` separately prepares the development environment. Installation does
+not create project files: `stockrank init` explicitly initializes the current directory with a
+zero-model configuration, the `best-bet` mode, and the `liquid-50` universe.
 
 Both credential commands use hidden confirmation prompts and save secrets in the operating system
 keyring. API keys are never stored in `stockrank.toml` or passed as command-line options. SEC
@@ -50,9 +56,12 @@ override it when a different identity is appropriate.
 - the tracking benchmark;
 - named OpenAI-compatible model profiles.
 
-The included `deepseek` profile uses the standard OpenAI Python client with
-`https://api.deepseek.com`. Add and securely authenticate any other OpenAI-compatible provider from
-the CLI:
+Immediately after initialization, `stockrank model list` prints `(none)`. The first profile added
+with `stockrank model add` automatically becomes the default; later profiles become the default only
+when added with `--default` or selected with `stockrank model default`.
+
+A DeepSeek profile uses the standard OpenAI Python client with `https://api.deepseek.com`. Add and
+securely authenticate any other OpenAI-compatible provider from the CLI:
 
 ```sh
 stockrank model add openrouter \
