@@ -20,6 +20,15 @@ from .credentials import CredentialStore
 from .model_catalog import CatalogError, CatalogModel, CatalogProvider, ModelsDevClient
 
 _CUSTOM_PROVIDER = "Custom OpenAI-compatible provider"
+_AUTOCOMPLETE_STYLE = questionary.Style(
+    [
+        ("answer", "fg:#e5e7eb"),
+        ("selected", "fg:#ffffff bg:#2563eb bold noreverse"),
+        ("completion-menu", "fg:#e5e7eb bg:#1f2937"),
+        ("completion-menu.completion", "fg:#e5e7eb bg:#1f2937 nobold"),
+        ("completion-menu.completion.current", "fg:#ffffff bg:#2563eb noreverse"),
+    ]
+)
 _T = TypeVar("_T")
 Validator = Callable[[str], bool | str]
 
@@ -63,6 +72,7 @@ class TerminalSetupPrompts:
                     choices=list(choices),
                     ignore_case=True,
                     match_middle=True,
+                    style=_AUTOCOMPLETE_STYLE,
                     validate=lambda value: (
                         True if value in allowed else "Select one of the catalog choices."
                     ),
