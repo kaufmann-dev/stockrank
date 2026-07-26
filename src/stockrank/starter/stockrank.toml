@@ -1,0 +1,27 @@
+[sources.massive]
+base_url = "https://api.massive.com"
+concurrency = 4
+
+[sources.sec]
+user_agent = "stockrank/1.0 (https://github.com/kaufmann-dev/stockrank)"
+base_url = "https://data.sec.gov"
+requests_per_second = 8.0
+
+[data]
+price_history_days = 730
+liquidity_lookback_sessions = 20
+news_items = 20
+filing_items = 10
+insider_items = 20
+min_price_bars = 60
+evidence_char_budget = 12000
+
+[defaults]
+mode = "best-bet"
+profile = "medium"
+seed = 42
+
+[tracking]
+benchmark = "SPY"
+
+[models]

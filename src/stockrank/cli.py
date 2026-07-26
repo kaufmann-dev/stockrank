@@ -13,6 +13,8 @@ from .config import (
     ConfigError,
     ModelConfig,
     available_names,
+    initialize_project,
+    is_initialized,
     load_app_config,
     load_mode,
     model_config,
@@ -51,12 +53,32 @@ def _credentials() -> CredentialStore:
     return CredentialStore()
 
 
+def _require_initialized() -> Path:
+    root = _root()
+    if not is_initialized(root):
+        raise ConfigError("project is not initialized; run 'stockrank init'")
+    return root
+
+
 def _prompt_secret(label: str) -> str:
     return typer.prompt(
         label,
         hide_input=True,
         confirmation_prompt=True,
     )
+
+
+@app.command("init")
+def init_cmd() -> None:
+    try:
+        root = _root()
+        created = initialize_project(root)
+        relative = ", ".join(str(path.relative_to(root)) for path in created)
+        console.print(f"Initialized stockrank project in {root}.")
+        console.print(f"Created {relative}.")
+        console.print("Next: stockrank model add NAME --base-url URL --model MODEL")
+    except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
+        _fail(exc)
 
 
 @app.command("rank")
@@ -74,6 +96,7 @@ def rank_cmd(
     resume: Annotated[str | None, typer.Option("--resume", help="Resume an existing run id.")] = None,
 ) -> None:
     try:
+        root = _require_initialized()
         if resume and any(value is not None for value in (universe, mode, model, profile)):
             raise ConfigError("--resume cannot be combined with new-run selection options")
         if not resume and not universe:
@@ -81,7 +104,7 @@ def rank_cmd(
         from .pipeline import execute_rank
 
         run_id = execute_rank(
-            _root(),
+            root,
             universe_name=universe,
             mode_name=mode,
             model_name=model,
@@ -149,7 +172,7 @@ def universe_resolve_cmd(name: Annotated[str, typer.Argument(help="Universe name
     try:
         from .pipeline import resolve_universe
 
-        resolved = resolve_universe(_root(), name, console=console)
+        resolved = resolve_universe(_require_initialized(), name, console=console)
         console.print_json(json.dumps(resolved, sort_keys=True))
     except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
         _fail(exc)
@@ -182,7 +205,14 @@ def mode_validate_cmd(name: Annotated[str, typer.Argument(help="Mode name.")]) -
 @model_app.command("list")
 def model_list_cmd() -> None:
     try:
-        config = load_app_config(_root())
+        root = _root()
+        if not is_initialized(root):
+            console.print("Not initialized. Run 'stockrank init'.")
+            return
+        config = load_app_config(root)
+        if not config.models:
+            console.print("(none)")
+            return
         for name in sorted(config.models):
             suffix = " (default)" if name == config.defaults.model else ""
             console.print(f"{name}{suffix}")
@@ -193,7 +223,7 @@ def model_list_cmd() -> None:
 @model_app.command("show")
 def model_show_cmd(name: Annotated[str, typer.Argument(help="Model profile name.")]) -> None:
     try:
-        profile = model_config(_root(), name)
+        profile = model_config(_require_initialized(), name)
         console.print_json(
             json.dumps(
                 {
@@ -256,6 +286,7 @@ def model_add_cmd(
     ] = False,
 ) -> None:
     try:
+        root = _require_initialized()
         profile = ModelConfig(
             name=name,
             base_url=base_url,
@@ -270,8 +301,8 @@ def model_add_cmd(
         previous_key = credentials.get_llm_key(name)
         credentials.set_llm_key(name, _prompt_secret(f"API key for {name}"))
         try:
-            save_model_config(
-                _root(),
+            made_default = save_model_config(
+                root,
                 profile,
                 make_default=make_default,
                 replace=replace,
@@ -282,7 +313,7 @@ def model_add_cmd(
             else:
                 credentials.set_llm_key(name, previous_key)
             raise
-        suffix = " and made default" if make_default else ""
+        suffix = " and made default" if made_default else ""
         console.print(f"Saved model profile {name!r}{suffix}.")
     except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
         _fail(exc)
@@ -293,7 +324,7 @@ def model_set_key_cmd(
     name: Annotated[str, typer.Argument(help="Existing model profile name.")],
 ) -> None:
     try:
-        model_config(_root(), name)
+        model_config(_require_initialized(), name)
         _credentials().set_llm_key(name, _prompt_secret(f"API key for {name}"))
         console.print(f"Stored API key for model profile {name!r}.")
     except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
@@ -308,7 +339,7 @@ def model_status_cmd(
     ] = None,
 ) -> None:
     try:
-        profile = model_config(_root(), name)
+        profile = model_config(_require_initialized(), name)
         state = "stored" if _credentials().get_llm_key(profile.name) else "missing"
         console.print(f"{profile.name}: API key {state}")
     except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
@@ -320,7 +351,7 @@ def model_default_cmd(
     name: Annotated[str, typer.Argument(help="Existing model profile name.")],
 ) -> None:
     try:
-        set_default_model(_root(), name)
+        set_default_model(_require_initialized(), name)
         console.print(f"Default model profile set to {name!r}.")
     except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
         _fail(exc)
@@ -333,7 +364,7 @@ def model_test_cmd(
     try:
         from .pipeline import test_model
 
-        selected = test_model(_root(), name)
+        selected = test_model(_require_initialized(), name)
         console.print(f"{selected}: connected")
     except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
         _fail(exc)
@@ -372,11 +403,12 @@ def track_cmd(
     all_runs: Annotated[bool, typer.Option("--all", help="Track every finalized run.")] = False,
 ) -> None:
     try:
+        root = _require_initialized()
         if run_id and all_runs:
             raise ConfigError("use either --run or --all")
         from .pipeline import track_rankings
 
-        tracked = track_rankings(_root(), run_id=run_id, all_runs=all_runs or run_id is None, console=console)
+        tracked = track_rankings(root, run_id=run_id, all_runs=all_runs or run_id is None, console=console)
         console.print(f"Tracked {len(tracked)} run(s): {', '.join(tracked)}")
     except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
         _fail(exc)

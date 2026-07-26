@@ -5,6 +5,7 @@ import re
 import tempfile
 import tomllib
 from dataclasses import dataclass, field
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -16,10 +17,34 @@ RUN_SCHEMA_VERSION = 2
 PROFILE_NAMES = frozenset({"low", "medium", "high"})
 DEFAULT_SEC_USER_AGENT = "stockrank/1.0 (https://github.com/kaufmann-dev/stockrank)"
 _PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+_STARTER_FILES = (
+    Path("stockrank.toml"),
+    Path("modes/best-bet.toml"),
+    Path("universes/liquid-50.toml"),
+)
 
 
 class ConfigError(RuntimeError):
     pass
+
+
+def is_initialized(root: Path) -> bool:
+    return (root / "stockrank.toml").is_file()
+
+
+def initialize_project(root: Path) -> tuple[Path, ...]:
+    targets = tuple(root / relative for relative in _STARTER_FILES)
+    conflicts = [target for target in targets if target.exists()]
+    if conflicts:
+        rendered = ", ".join(str(path.relative_to(root)) for path in conflicts)
+        raise ConfigError(f"cannot initialize because these files already exist: {rendered}")
+
+    starter = files("stockrank").joinpath("starter")
+    for relative, target in zip(_STARTER_FILES, targets, strict=True):
+        resource = starter.joinpath(*relative.parts)
+        raw = tomllib.loads(resource.read_text(encoding="utf-8"))
+        write_toml(target, raw)
+    return targets
 
 
 def read_toml(path: Path) -> dict[str, Any]:
@@ -113,7 +138,7 @@ class ModelConfig:
 
 @dataclass(frozen=True)
 class DefaultsConfig:
-    model: str
+    model: str | None
     mode: str = "best-bet"
     profile: str = "medium"
     seed: int = 42
@@ -210,16 +235,21 @@ def load_app_config(root: Path) -> AppConfig:
             ),
             extra_body=dict(extra_body),
         )
-    if not models:
-        raise ConfigError("models must define at least one model profile")
+    default_model_raw = defaults_raw.get("model")
+    if default_model_raw is None:
+        if models:
+            raise ConfigError("defaults.model is required when model profiles are configured")
+        default_model = None
+    else:
+        default_model = _string(default_model_raw, "defaults.model")
 
     defaults = DefaultsConfig(
-        model=_string(defaults_raw.get("model"), "defaults.model"),
+        model=default_model,
         mode=_string(defaults_raw.get("mode", "best-bet"), "defaults.mode"),
         profile=_string(defaults_raw.get("profile", "medium"), "defaults.profile"),
         seed=_integer(defaults_raw.get("seed", 42), "defaults.seed"),
     )
-    if defaults.model not in models:
+    if defaults.model is not None and defaults.model not in models:
         raise ConfigError(f"defaults.model references unknown profile {defaults.model!r}")
     if defaults.profile not in PROFILE_NAMES:
         raise ConfigError(f"defaults.profile must be one of {sorted(PROFILE_NAMES)}")
@@ -317,6 +347,8 @@ def available_names(root: Path, folder: str) -> list[str]:
 def model_config(root: Path, name: str | None = None) -> ModelConfig:
     config = load_app_config(root)
     selected = name or config.defaults.model
+    if selected is None:
+        raise ConfigError("no model profiles configured; add one with 'stockrank model add'")
     try:
         return config.models[selected]
     except KeyError as exc:
@@ -336,18 +368,20 @@ def save_model_config(
     *,
     make_default: bool = False,
     replace: bool = False,
-) -> None:
+) -> bool:
     entry = _model_entry(profile)
     raw = read_toml(root / "stockrank.toml")
     models = _table(raw.get("models"), "models")
     if profile.name in models and not replace:
         raise ConfigError(f"model profile {profile.name!r} already exists; use --replace to update it")
+    made_default = make_default or not models
     models[profile.name] = entry
-    if make_default:
+    if made_default:
         defaults = _table(raw.get("defaults"), "defaults")
         defaults["model"] = profile.name
     write_toml(root / "stockrank.toml", raw)
     load_app_config(root)
+    return made_default
 
 
 def delete_model_config(root: Path, name: str) -> None:
