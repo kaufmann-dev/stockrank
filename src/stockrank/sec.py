@@ -36,7 +36,7 @@ class SecClient:
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if not user_agent.strip():
-            raise SecError("SEC_USER_AGENT is required and must identify the application")
+            raise SecError("SEC User-Agent is required and must identify the application")
         if not 0 < rate_limit_per_second <= 10:
             raise ValueError("SEC rate_limit_per_second must be in (0, 10]")
         if max_retries < 0:

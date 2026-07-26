@@ -6,7 +6,8 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from stockrank.cli import app
-from stockrank.config import write_toml
+from stockrank.config import load_app_config, write_toml
+from stockrank.credentials import CredentialStore
 from stockrank.runs import RunStore
 
 runner = CliRunner()
@@ -17,15 +18,14 @@ def _project(root: Path) -> None:
         root / "stockrank.toml",
         {
             "sources": {
-                "massive": {"api_key_env": "MASSIVE_API_KEY"},
-                "sec": {"user_agent_env": "SEC_USER_AGENT"},
+                "massive": {},
+                "sec": {},
             },
             "defaults": {"model": "deepseek", "mode": "best-bet", "profile": "medium"},
             "models": {
                 "deepseek": {
                     "base_url": "https://api.deepseek.com",
                     "model": "deepseek-chat",
-                    "api_key_env": "DEEPSEEK_API_KEY",
                 }
             },
         },
@@ -44,6 +44,20 @@ def _project(root: Path) -> None:
     )
 
 
+class MemoryKeyring:
+    def __init__(self) -> None:
+        self.values: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, username: str) -> str | None:
+        return self.values.get((service, username))
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self.values[(service, username)] = password
+
+    def delete_password(self, service: str, username: str) -> None:
+        del self.values[(service, username)]
+
+
 def test_version_and_new_run_requires_explicit_universe() -> None:
     assert runner.invoke(app, ["version"]).stdout.strip() == "1.0.0"
     result = runner.invoke(app, ["rank"])
@@ -60,8 +74,73 @@ def test_lists_and_shows_saved_assets_and_redacted_model(tmp_path: Path, monkeyp
 
     output = runner.invoke(app, ["model", "show", "deepseek"]).stdout
     assert "https://api.deepseek.com" in output
-    assert "DEEPSEEK_API_KEY" in output
+    assert "system keyring" in output
     assert "secret-value" not in output
+
+
+def test_adds_multiple_model_profiles_and_stores_keys_outside_toml(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _project(tmp_path)
+    store = CredentialStore(MemoryKeyring())
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("stockrank.cli._credentials", lambda: store)
+
+    added = runner.invoke(
+        app,
+        [
+            "model",
+            "add",
+            "openrouter",
+            "--base-url",
+            "https://openrouter.ai/api/v1",
+            "--model",
+            "provider/model",
+            "--default",
+        ],
+        input="openrouter-secret\nopenrouter-secret\n",
+    )
+
+    assert added.exit_code == 0
+    assert "Saved model profile 'openrouter' and made default." in added.stdout
+    config = load_app_config(tmp_path)
+    assert sorted(config.models) == ["deepseek", "openrouter"]
+    assert config.defaults.model == "openrouter"
+    assert store.require_llm_key("openrouter") == "openrouter-secret"
+    assert "openrouter-secret" not in (tmp_path / "stockrank.toml").read_text()
+    assert "API key stored" in runner.invoke(app, ["model", "status"]).stdout
+
+
+def test_sets_and_clears_keyring_credentials_from_hidden_prompts(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _project(tmp_path)
+    store = CredentialStore(MemoryKeyring())
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("stockrank.cli._credentials", lambda: store)
+
+    model_result = runner.invoke(
+        app,
+        ["model", "set-key", "deepseek"],
+        input="llm-secret\nllm-secret\n",
+    )
+    massive_result = runner.invoke(
+        app,
+        ["massive", "set-key"],
+        input="massive-secret\nmassive-secret\n",
+    )
+
+    assert model_result.exit_code == 0
+    assert massive_result.exit_code == 0
+    assert store.require_llm_key("deepseek") == "llm-secret"
+    assert store.require_massive_key() == "massive-secret"
+    assert "llm-secret" not in model_result.stdout
+    assert "massive-secret" not in massive_result.stdout
+    assert "stored" in runner.invoke(app, ["massive", "status"]).stdout
+    assert runner.invoke(app, ["massive", "clear-key"]).exit_code == 0
+    assert store.get_massive_key() is None
 
 
 def test_resume_rejects_new_run_options() -> None:

@@ -4,12 +4,10 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
-from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 import httpx
-from dotenv import load_dotenv
 
 
 class MassiveError(RuntimeError):
@@ -86,7 +84,7 @@ class MassiveClient:
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         if not api_key.strip():
-            raise MassiveError("MASSIVE_API_KEY is required")
+            raise MassiveError("Massive API key is required")
         if max_retries < 0:
             raise ValueError("max_retries must be non-negative")
         self.api_key = api_key
@@ -96,16 +94,6 @@ class MassiveClient:
         self.backoff_seconds = backoff_seconds
         self.transport = transport
         self._sleep = sleep
-
-    @classmethod
-    def from_env(cls, root: Path) -> MassiveClient:
-        load_dotenv(root / ".env")
-        import os
-
-        return cls(
-            api_key=os.getenv("MASSIVE_API_KEY", ""),
-            base_url=os.getenv("MASSIVE_BASE_URL", "https://api.massive.com"),
-        )
 
     def _url(self, path_or_url: str) -> str:
         if path_or_url.startswith(("https://", "http://")):
@@ -144,7 +132,9 @@ class MassiveClient:
                     continue
 
                 if response.status_code == 401:
-                    raise MassiveAuthenticationError("Massive authentication failed; check MASSIVE_API_KEY")
+                    raise MassiveAuthenticationError(
+                        "Massive authentication failed; replace the stored API key"
+                    )
                 if response.status_code == 403:
                     return None, CoverageIssue(
                         source="massive",

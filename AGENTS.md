@@ -20,7 +20,8 @@ scorer.
 ## Invariants
 
 - Use current Massive endpoints. Never reintroduce the retired `/vX/reference/financials` endpoint.
-- SEC requests declare `SEC_USER_AGENT` and remain below 10 requests per second.
+- SEC requests declare the configured application User-Agent and remain below 10 requests per
+  second.
 - Prompt-visible evidence carries a public/knowledge date and stable evidence ID. Keep raw financial
   magnitudes in audit payloads; use ratios, changes, and cross-sectional views in evidence packs.
 - Universe membership selects candidates and is frozen at run creation; it is not model evidence.
@@ -32,7 +33,7 @@ scorer.
   provider-specific clients.
 - A resumed run uses its frozen universe, mode, model settings, schedule, and successful artifacts.
 - Forward tracking never becomes input to a later ranking.
-- Secrets live only in environment variables or ignored `.env`; reports and config displays never
+- API secrets live only in the operating system keyring; reports, TOML, and config displays never
   print secret values.
 
 ## Commands

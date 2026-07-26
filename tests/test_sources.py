@@ -137,7 +137,7 @@ def test_sec_declares_user_agent_pads_cik_throttles_and_retries() -> None:
 
 
 def test_sec_rejects_missing_identity_and_rate_above_policy() -> None:
-    with pytest.raises(Exception, match="SEC_USER_AGENT"):
+    with pytest.raises(Exception, match="SEC User-Agent"):
         SecClient("")
     with pytest.raises(ValueError, match=r"\(0, 10\]"):
         SecClient("stockrank contact@example.test", rate_limit_per_second=11)

@@ -8,7 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from stockrank.config import ConfigError, write_toml
+from stockrank.config import write_toml
+from stockrank.credentials import CredentialError, CredentialStore
 from stockrank.llm import RaceModelError, RaceResult
 from stockrank.massive import MassiveResult, MassiveTickerData
 from stockrank.pipeline import execute_rank
@@ -26,10 +27,9 @@ def _project(root: Path) -> None:
         {
             "sources": {
                 "massive": {
-                    "api_key_env": "MASSIVE_API_KEY",
                     "concurrency": 1,
                 },
-                "sec": {"user_agent_env": "SEC_USER_AGENT"},
+                "sec": {},
             },
             "data": {
                 "price_history_days": 60,
@@ -49,7 +49,6 @@ def _project(root: Path) -> None:
                 "fake": {
                     "base_url": "https://model.invalid",
                     "model": "fake-model",
-                    "api_key_env": "FAKE_MODEL_KEY",
                     "concurrency": 1,
                     "max_tokens": 500,
                 }
@@ -134,6 +133,20 @@ class FakeMassive:
             splits=(),
             coverage_issues=(),
         )
+
+
+class MemoryKeyring:
+    def __init__(self) -> None:
+        self.values: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, username: str) -> str | None:
+        return self.values.get((service, username))
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self.values[(service, username)] = password
+
+    def delete_password(self, service: str, username: str) -> None:
+        del self.values[(service, username)]
 
 
 class FakeSec:
@@ -242,19 +255,26 @@ def test_execute_rank_creates_complete_auditable_artifacts(tmp_path: Path) -> No
 
 def test_new_run_preflights_every_credential_before_network_or_artifacts(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _project(tmp_path)
-    monkeypatch.setenv("MASSIVE_API_KEY", "present")
-    monkeypatch.delenv("SEC_USER_AGENT", raising=False)
-    monkeypatch.delenv("FAKE_MODEL_KEY", raising=False)
+    credentials = CredentialStore(MemoryKeyring())
 
-    with pytest.raises(ConfigError, match="SEC_USER_AGENT"):
-        execute_rank(tmp_path, universe_name="six", now=NOW)
+    with pytest.raises(CredentialError, match="Massive API key"):
+        execute_rank(
+            tmp_path,
+            universe_name="six",
+            now=NOW,
+            credential_store=credentials,
+        )
 
-    monkeypatch.setenv("SEC_USER_AGENT", "stockrank test contact@example.test")
-    with pytest.raises(ConfigError, match="FAKE_MODEL_KEY"):
-        execute_rank(tmp_path, universe_name="six", now=NOW)
+    credentials.set_massive_key("present")
+    with pytest.raises(CredentialError, match="LLM profile 'fake'"):
+        execute_rank(
+            tmp_path,
+            universe_name="six",
+            now=NOW,
+            credential_store=credentials,
+        )
 
     assert RunStore(tmp_path).list() == []
 
@@ -377,29 +397,28 @@ def test_resume_rejects_parseable_evidence_tampering(tmp_path: Path) -> None:
 
 def test_model_uses_generic_openai_factory_without_a_completion(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _project(tmp_path)
     write_toml(
         tmp_path / "stockrank.toml",
         {
             "sources": {
-                "massive": {"api_key_env": "MASSIVE_API_KEY"},
-                "sec": {"user_agent_env": "SEC_USER_AGENT"},
+                "massive": {},
+                "sec": {},
             },
             "defaults": {"model": "deepseek"},
             "models": {
                 "deepseek": {
                     "base_url": "https://api.deepseek.com",
                     "model": "deepseek-v4-pro",
-                    "api_key_env": "DEEPSEEK_API_KEY",
                     "timeout_seconds": 45.0,
                     "max_retries": 4,
                 }
             },
         },
     )
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret")
+    credentials = CredentialStore(MemoryKeyring())
+    credentials.set_llm_key("deepseek", "secret")
     constructor_calls: list[dict[str, object]] = []
     list_calls = 0
 
@@ -418,6 +437,7 @@ def test_model_uses_generic_openai_factory_without_a_completion(
             tmp_path,
             "deepseek",
             client_factory=factory,
+            credential_store=credentials,
         )
         == "deepseek"
     )

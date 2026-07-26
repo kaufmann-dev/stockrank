@@ -9,7 +9,18 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__
-from .config import ConfigError, available_names, load_app_config, load_mode, model_config, read_toml
+from .config import (
+    ConfigError,
+    ModelConfig,
+    available_names,
+    load_app_config,
+    load_mode,
+    model_config,
+    read_toml,
+    save_model_config,
+    set_default_model,
+)
+from .credentials import CredentialStore
 
 console = Console()
 app = typer.Typer(
@@ -19,10 +30,12 @@ runs_app = typer.Typer(no_args_is_help=True, help="Inspect durable ranking runs.
 universe_app = typer.Typer(no_args_is_help=True, help="Inspect and resolve universe definitions.")
 mode_app = typer.Typer(no_args_is_help=True, help="Inspect and validate ranking modes.")
 model_app = typer.Typer(no_args_is_help=True, help="Inspect and test model profiles.")
+massive_app = typer.Typer(no_args_is_help=True, help="Manage the Massive API credential.")
 app.add_typer(runs_app, name="runs")
 app.add_typer(universe_app, name="universe")
 app.add_typer(mode_app, name="mode")
 app.add_typer(model_app, name="model")
+app.add_typer(massive_app, name="massive")
 
 
 def _root() -> Path:
@@ -32,6 +45,18 @@ def _root() -> Path:
 def _fail(exc: Exception) -> None:
     console.print(f"[red]error:[/] {exc}")
     raise typer.Exit(1)
+
+
+def _credentials() -> CredentialStore:
+    return CredentialStore()
+
+
+def _prompt_secret(label: str) -> str:
+    return typer.prompt(
+        label,
+        hide_input=True,
+        confirmation_prompt=True,
+    )
 
 
 @app.command("rank")
@@ -175,7 +200,7 @@ def model_show_cmd(name: Annotated[str, typer.Argument(help="Model profile name.
                     "name": profile.name,
                     "base_url": profile.base_url,
                     "model": profile.model,
-                    "api_key_env": profile.api_key_env,
+                    "api_key_storage": "system keyring",
                     "timeout_seconds": profile.timeout_seconds,
                     "max_retries": profile.max_retries,
                     "concurrency": profile.concurrency,
@@ -190,6 +215,117 @@ def model_show_cmd(name: Annotated[str, typer.Argument(help="Model profile name.
         _fail(exc)
 
 
+@model_app.command("add")
+def model_add_cmd(
+    name: Annotated[str, typer.Argument(help="Unique model profile name.")],
+    base_url: Annotated[
+        str,
+        typer.Option("--base-url", help="OpenAI-compatible API base URL."),
+    ],
+    model: Annotated[
+        str,
+        typer.Option("--model", help="Provider model identifier."),
+    ],
+    reasoning_effort: Annotated[
+        str | None,
+        typer.Option("--reasoning-effort", help="Optional OpenAI-compatible reasoning effort."),
+    ] = None,
+    timeout_seconds: Annotated[
+        float,
+        typer.Option("--timeout", min=0.1, help="Request timeout in seconds."),
+    ] = 120.0,
+    max_retries: Annotated[
+        int,
+        typer.Option("--max-retries", min=0, help="Provider retry count."),
+    ] = 2,
+    concurrency: Annotated[
+        int,
+        typer.Option("--concurrency", min=1, help="Maximum parallel model calls."),
+    ] = 4,
+    max_tokens: Annotated[
+        int,
+        typer.Option("--max-tokens", min=1, help="Maximum response tokens."),
+    ] = 4096,
+    make_default: Annotated[
+        bool,
+        typer.Option("--default", help="Make this the default model profile."),
+    ] = False,
+    replace: Annotated[
+        bool,
+        typer.Option("--replace", help="Replace an existing profile with this name."),
+    ] = False,
+) -> None:
+    try:
+        profile = ModelConfig(
+            name=name,
+            base_url=base_url,
+            model=model,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+            concurrency=concurrency,
+            max_tokens=max_tokens,
+            reasoning_effort=reasoning_effort,
+        )
+        credentials = _credentials()
+        previous_key = credentials.get_llm_key(name)
+        credentials.set_llm_key(name, _prompt_secret(f"API key for {name}"))
+        try:
+            save_model_config(
+                _root(),
+                profile,
+                make_default=make_default,
+                replace=replace,
+            )
+        except Exception:
+            if previous_key is None:
+                credentials.delete_llm_key(name)
+            else:
+                credentials.set_llm_key(name, previous_key)
+            raise
+        suffix = " and made default" if make_default else ""
+        console.print(f"Saved model profile {name!r}{suffix}.")
+    except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
+        _fail(exc)
+
+
+@model_app.command("set-key")
+def model_set_key_cmd(
+    name: Annotated[str, typer.Argument(help="Existing model profile name.")],
+) -> None:
+    try:
+        model_config(_root(), name)
+        _credentials().set_llm_key(name, _prompt_secret(f"API key for {name}"))
+        console.print(f"Stored API key for model profile {name!r}.")
+    except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
+        _fail(exc)
+
+
+@model_app.command("status")
+def model_status_cmd(
+    name: Annotated[
+        str | None,
+        typer.Argument(help="Model profile name; defaults from config."),
+    ] = None,
+) -> None:
+    try:
+        profile = model_config(_root(), name)
+        state = "stored" if _credentials().get_llm_key(profile.name) else "missing"
+        console.print(f"{profile.name}: API key {state}")
+    except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
+        _fail(exc)
+
+
+@model_app.command("default")
+def model_default_cmd(
+    name: Annotated[str, typer.Argument(help="Existing model profile name.")],
+) -> None:
+    try:
+        set_default_model(_root(), name)
+        console.print(f"Default model profile set to {name!r}.")
+    except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
+        _fail(exc)
+
+
 @model_app.command("test")
 def model_test_cmd(
     name: Annotated[str | None, typer.Argument(help="Model profile name; defaults from config.")] = None,
@@ -199,6 +335,33 @@ def model_test_cmd(
 
         selected = test_model(_root(), name)
         console.print(f"{selected}: connected")
+    except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
+        _fail(exc)
+
+
+@massive_app.command("set-key")
+def massive_set_key_cmd() -> None:
+    try:
+        _credentials().set_massive_key(_prompt_secret("Massive API key"))
+        console.print("Stored Massive API key.")
+    except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
+        _fail(exc)
+
+
+@massive_app.command("status")
+def massive_status_cmd() -> None:
+    try:
+        state = "stored" if _credentials().get_massive_key() else "missing"
+        console.print(f"Massive API key: {state}")
+    except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
+        _fail(exc)
+
+
+@massive_app.command("clear-key")
+def massive_clear_key_cmd() -> None:
+    try:
+        removed = _credentials().delete_massive_key()
+        console.print("Removed Massive API key." if removed else "Massive API key was not stored.")
     except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
         _fail(exc)
 

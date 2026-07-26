@@ -1,10 +1,9 @@
 [sources.massive]
-api_key_env = "MASSIVE_API_KEY"
 base_url = "https://api.massive.com"
 concurrency = 4
 
 [sources.sec]
-user_agent_env = "SEC_USER_AGENT"
+user_agent = "stockrank/1.0 (https://github.com/kaufmann-dev/stockrank)"
 base_url = "https://data.sec.gov"
 requests_per_second = 8.0
 
@@ -29,7 +28,6 @@ benchmark = "SPY"
 [models.deepseek]
 base_url = "https://api.deepseek.com"
 model = "deepseek-v4-pro"
-api_key_env = "DEEPSEEK_API_KEY"
 timeout_seconds = 120.0
 max_retries = 2
 concurrency = 4

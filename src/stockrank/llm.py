@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Collection, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, is_dataclass
@@ -40,9 +39,6 @@ class ModelProfile(Protocol):
 
     @property
     def model(self) -> str: ...
-
-    @property
-    def api_key_env(self) -> str: ...
 
     @property
     def timeout_seconds(self) -> float: ...
@@ -148,9 +144,9 @@ class OpenAIRaceJudge:
         self,
         profile: ModelProfile,
         *,
+        api_key: str | None = None,
         client: Any | None = None,
         client_factory: Any = OpenAI,
-        environ: Mapping[str, str] | None = None,
     ) -> None:
         if profile.concurrency < 1:
             raise ValueError("model profile concurrency must be at least 1")
@@ -158,12 +154,11 @@ class OpenAIRaceJudge:
             raise ValueError("model profile max_tokens must be at least 1")
         self.profile = profile
         if client is None:
-            environment = os.environ if environ is None else environ
-            api_key = environment.get(profile.api_key_env, "").strip()
-            if not api_key:
-                raise RaceModelError(f"missing model API key in environment variable {profile.api_key_env}")
+            secret = (api_key or "").strip()
+            if not secret:
+                raise RaceModelError(f"API key for model profile {profile.name!r} is required")
             client = client_factory(
-                api_key=api_key,
+                api_key=secret,
                 base_url=profile.base_url,
                 timeout=profile.timeout_seconds,
                 max_retries=profile.max_retries,
