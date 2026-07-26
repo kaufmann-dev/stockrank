@@ -1,0 +1,6 @@
+name = "Liquid U.S. 50"
+kind = "liquidity"
+top_n = 50
+lookback_sessions = 20
+min_price = 5.0
+exchanges = ["XNYS", "XNAS"]

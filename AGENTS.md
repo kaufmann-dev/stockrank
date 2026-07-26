@@ -1,37 +1,48 @@
 # Repository Guidelines
 
-## Project Structure
+## Product
 
-`src/stockrank/` is the CLI package. Keep Typer command functions in `cli.py` thin; put behavior in importable functions so tests can call them directly.
+`stockrank` is a Python CLI that ranks a selected U.S. equity universe end to end from fresh Massive
+and SEC evidence. One configured OpenAI-compatible model ranks balanced small groups; regularized
+Plackett–Luce produces the complete ranking; deterministic tracking measures future rank outcomes.
 
-Static assets are part of the product: `prompts/`, `strategies/`, `modes/`, `harnesses/`, `universes/`. Project-scoped execution skills live under `.agents/skills/` and remain separate from runtime prompt assets. Runtime output belongs under ignored `runs/`; live portfolio state under `live/` stays versioned — never add `live/` to `.gitignore`.
+It is not a portfolio builder, broker, backtester, external-agent task system, or isolated stock
+scorer.
 
-## Design Invariants
+## Structure
 
-- Never invoke LLMs or agent harnesses from the CLI. Harness files are pure labels.
-- Keep prompt templates in `prompts/` limited to fixed mechanics (files to read, file to write, exact output schema); persona and task always come from the mode.
-- Address paths in rendered `task.txt` files via the `{workdir}` placeholder relative to the harness session folder — subagents inherit the session cwd, so bare relative paths would collide across tickers.
-- Use TOML filenames as stable identifiers: `modes/mean-reversion.toml` maps to mode name `mean-reversion`.
+- `src/stockrank/` contains all runtime behavior; keep Typer functions in `cli.py` thin.
+- `stockrank.toml` contains source, model-profile, ranking, and tracking configuration.
+- `modes/` contains complete saved ranking objectives.
+- `universes/` contains static or dynamic universe definitions.
+- Ignored `runs/` contains immutable run inputs and resumable artifacts.
 
-## Build, Test, and Development Commands
+## Invariants
+
+- Use current Massive endpoints. Never reintroduce the retired `/vX/reference/financials` endpoint.
+- SEC requests declare `SEC_USER_AGENT` and remain below 10 requests per second.
+- Prompt-visible evidence carries a public/knowledge date and stable evidence ID. Keep raw financial
+  magnitudes in audit payloads; use ratios, changes, and cross-sectional views in evidence packs.
+- Universe membership selects candidates and is frozen at run creation; it is not model evidence.
+- A mode changes only the ranking objective. It never changes source fetching or ranking math.
+- Every race response is an exact ticker permutation with locally validated evidence citations.
+- Scheduling is seeded, balanced, connected, and contains no repeated ticker within a race.
+- Primary rank sorts by unadjusted Plackett–Luce strength. Bootstrap output is diagnostic only.
+- Model profiles use the OpenAI Chat Completions contract and parse `message.content`; do not add
+  provider-specific clients.
+- A resumed run uses its frozen universe, mode, model settings, schedule, and successful artifacts.
+- Forward tracking never becomes input to a later ranking.
+- Secrets live only in environment variables or ignored `.env`; reports and config displays never
+  print secret values.
+
+## Commands
 
 ```sh
-python3 -m pip install -e '.[dev]'
+uv sync --all-extras
+uv run pyright
+uv run ruff check .
+uv run pytest
 ```
 
-```sh
-python3 -m pytest
-```
-
-```sh
-stockrank config
-stockrank version
-```
-
-## Testing Guidelines
-
-Tests live in `tests/` with names like `test_config.py`. Always use temporary project fixtures and fake Massive clients instead of network calls.
-
-## Security
-
-Read Massive credentials only from `.env` via `MASSIVE_API_KEY`; never commit secrets.
+Tests use fake Massive, SEC, and model transports. Keep live checks explicit, bounded, and separate
+from the default suite.
