@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from stockrank.config import write_toml
+from stockrank.config import user_config_path, write_toml
 from stockrank.credentials import CredentialError, CredentialStore
 from stockrank.llm import RaceModelError, RaceResult
 from stockrank.massive import MassiveResult, MassiveTickerData
@@ -40,11 +40,16 @@ def _project(root: Path) -> None:
                 "evidence_char_budget": 4000,
             },
             "defaults": {
-                "model": "fake",
                 "mode": "best-bet",
                 "profile": "low",
                 "seed": 37,
             },
+        },
+    )
+    write_toml(
+        user_config_path(),
+        {
+            "defaults": {"model": "fake"},
             "models": {
                 "fake": {
                     "provider": "fake",
@@ -402,12 +407,8 @@ def test_model_uses_generic_openai_factory_without_a_completion(
 ) -> None:
     _project(tmp_path)
     write_toml(
-        tmp_path / "stockrank.toml",
+        user_config_path(),
         {
-            "sources": {
-                "massive": {},
-                "sec": {},
-            },
             "defaults": {"model": "deepseek"},
             "models": {
                 "deepseek": {

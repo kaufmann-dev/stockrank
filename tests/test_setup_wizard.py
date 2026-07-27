@@ -7,7 +7,7 @@ import pytest
 from prompt_toolkit.styles import Style
 from rich.console import Console
 
-from stockrank.config import ModelConfig, initialize_project, load_app_config, write_toml
+from stockrank.config import ModelConfig, initialize_project, load_app_config, user_config_path, write_toml
 from stockrank.credentials import CredentialStore
 from stockrank.model_catalog import CatalogError, CatalogModel, CatalogProvider
 from stockrank.setup_wizard import (
@@ -107,6 +107,12 @@ def _configured_project(root: Path) -> None:
         root / "stockrank.toml",
         {
             "sources": {"massive": {}, "sec": {}},
+            "defaults": {},
+        },
+    )
+    write_toml(
+        user_config_path(),
+        {
             "defaults": {"model": "deepseek"},
             "models": {
                 "deepseek": {

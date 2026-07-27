@@ -163,7 +163,6 @@ def save_model_profile_with_key(
     credentials.set_llm_key(profile.name, api_key)
     try:
         return save_model_config(
-            root,
             profile,
             make_default=make_default,
             replace=replace_existing,

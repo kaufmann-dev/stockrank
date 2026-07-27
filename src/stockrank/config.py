@@ -24,6 +24,8 @@ _STARTER_FILES = (
     Path("modes/best-bet.toml"),
     Path("universes/liquid-50.toml"),
 )
+_PROJECT_CONFIG_FIELDS = frozenset({"sources", "data", "defaults", "tracking"})
+_GLOBAL_CONFIG_FIELDS = frozenset({"defaults", "models"})
 
 
 class ConfigError(RuntimeError):
@@ -39,6 +41,13 @@ class InitializationResult:
 
 def is_initialized(root: Path) -> bool:
     return (root / "stockrank.toml").is_file()
+
+
+def user_config_path() -> Path:
+    config_home = os.environ.get("XDG_CONFIG_HOME")
+    if config_home:
+        return Path(config_home) / "stockrank" / "config.toml"
+    return Path.home() / ".config" / "stockrank" / "config.toml"
 
 
 def initialize_project(root: Path) -> InitializationResult:
@@ -225,81 +234,19 @@ class Mode:
 
 def load_app_config(root: Path) -> AppConfig:
     raw = read_toml(root / "stockrank.toml")
+    unexpected = sorted(set(raw) - _PROJECT_CONFIG_FIELDS)
+    if unexpected:
+        raise ConfigError("project configuration contains unknown fields: " + ", ".join(unexpected))
     sources = _table(raw.get("sources"), "sources")
     massive_raw = _table(sources.get("massive"), "sources.massive")
     sec_raw = _table(sources.get("sec"), "sources.sec")
     data_raw = _table(raw.get("data", {}), "data")
     defaults_raw = _table(raw.get("defaults"), "defaults")
     tracking_raw = _table(raw.get("tracking", {}), "tracking")
-    models_raw = _table(raw.get("models"), "models")
-
-    models: dict[str, ModelConfig] = {}
-    for name, value in models_raw.items():
-        model_raw = _table(value, f"models.{name}")
-        declared_name = _string(name, "model profile name")
-        if not _PROFILE_NAME_RE.fullmatch(declared_name):
-            raise ConfigError(
-                f"model profile name {declared_name!r} may contain only letters, numbers, '.', '_' and '-'"
-            )
-        unexpected = sorted(
-            set(model_raw)
-            - {
-                "provider",
-                "base_url",
-                "model",
-                "timeout_seconds",
-                "max_retries",
-                "concurrency",
-                "max_tokens",
-                "reasoning_effort",
-                "extra_body",
-            }
-        )
-        if unexpected:
-            raise ConfigError(f"models.{name} contains unknown fields: {', '.join(unexpected)}")
-        extra_body = model_raw.get("extra_body", {})
-        if not isinstance(extra_body, dict):
-            raise ConfigError(f"models.{name}.extra_body must be a table")
-        base_url = _string(model_raw.get("base_url"), f"models.{name}.base_url").rstrip("/")
-        _validate_http_url(base_url, f"models.{name}.base_url")
-        models[name] = ModelConfig(
-            name=declared_name,
-            provider=_identifier(model_raw.get("provider"), f"models.{name}.provider"),
-            base_url=base_url,
-            model=_string(model_raw.get("model"), f"models.{name}.model"),
-            timeout_seconds=_number(
-                model_raw.get("timeout_seconds", 120.0),
-                f"models.{name}.timeout_seconds",
-                minimum=0.1,
-            ),
-            max_retries=_integer(model_raw.get("max_retries", 2), f"models.{name}.max_retries"),
-            concurrency=_integer(
-                model_raw.get("concurrency", 4),
-                f"models.{name}.concurrency",
-                minimum=1,
-            ),
-            max_tokens=_integer(
-                model_raw.get("max_tokens", 4096),
-                f"models.{name}.max_tokens",
-                minimum=1,
-            ),
-            reasoning_effort=(
-                _string(
-                    model_raw["reasoning_effort"],
-                    f"models.{name}.reasoning_effort",
-                )
-                if model_raw.get("reasoning_effort") is not None
-                else None
-            ),
-            extra_body=dict(extra_body),
-        )
-    default_model_raw = defaults_raw.get("model")
-    if default_model_raw is None:
-        if models:
-            raise ConfigError("defaults.model is required when model profiles are configured")
-        default_model = None
-    else:
-        default_model = _string(default_model_raw, "defaults.model")
+    defaults_unexpected = sorted(set(defaults_raw) - {"mode", "profile", "seed"})
+    if defaults_unexpected:
+        raise ConfigError("project defaults contains unknown fields: " + ", ".join(defaults_unexpected))
+    default_model, models = load_global_model_config()
 
     defaults = DefaultsConfig(
         model=default_model,
@@ -379,6 +326,94 @@ def load_app_config(root: Path) -> AppConfig:
     )
 
 
+def load_global_model_config() -> tuple[str | None, dict[str, ModelConfig]]:
+    path = user_config_path()
+    if not path.exists():
+        return None, {}
+    raw = read_toml(path)
+    unexpected = sorted(set(raw) - _GLOBAL_CONFIG_FIELDS)
+    if unexpected:
+        raise ConfigError("global configuration contains unknown fields: " + ", ".join(unexpected))
+    defaults_raw = _table(raw.get("defaults", {}), "global defaults")
+    defaults_unexpected = sorted(set(defaults_raw) - {"model"})
+    if defaults_unexpected:
+        raise ConfigError("global defaults contains unknown fields: " + ", ".join(defaults_unexpected))
+    models = _load_model_profiles(_table(raw.get("models", {}), "models"))
+    default_model_raw = defaults_raw.get("model")
+    if default_model_raw is None:
+        if models:
+            raise ConfigError("global defaults.model is required when model profiles are configured")
+        return None, models
+    default_model = _string(default_model_raw, "global defaults.model")
+    if default_model not in models:
+        raise ConfigError(f"global defaults.model references unknown profile {default_model!r}")
+    return default_model, models
+
+
+def _load_model_profiles(models_raw: dict[str, Any]) -> dict[str, ModelConfig]:
+    models: dict[str, ModelConfig] = {}
+    for name, value in models_raw.items():
+        model_raw = _table(value, f"models.{name}")
+        declared_name = _string(name, "model profile name")
+        if not _PROFILE_NAME_RE.fullmatch(declared_name):
+            raise ConfigError(
+                f"model profile name {declared_name!r} may contain only letters, numbers, '.', '_' and '-'"
+            )
+        unexpected = sorted(
+            set(model_raw)
+            - {
+                "provider",
+                "base_url",
+                "model",
+                "timeout_seconds",
+                "max_retries",
+                "concurrency",
+                "max_tokens",
+                "reasoning_effort",
+                "extra_body",
+            }
+        )
+        if unexpected:
+            raise ConfigError(f"models.{name} contains unknown fields: {', '.join(unexpected)}")
+        extra_body = model_raw.get("extra_body", {})
+        if not isinstance(extra_body, dict):
+            raise ConfigError(f"models.{name}.extra_body must be a table")
+        base_url = _string(model_raw.get("base_url"), f"models.{name}.base_url").rstrip("/")
+        _validate_http_url(base_url, f"models.{name}.base_url")
+        models[name] = ModelConfig(
+            name=declared_name,
+            provider=_identifier(model_raw.get("provider"), f"models.{name}.provider"),
+            base_url=base_url,
+            model=_string(model_raw.get("model"), f"models.{name}.model"),
+            timeout_seconds=_number(
+                model_raw.get("timeout_seconds", 120.0),
+                f"models.{name}.timeout_seconds",
+                minimum=0.1,
+            ),
+            max_retries=_integer(model_raw.get("max_retries", 2), f"models.{name}.max_retries"),
+            concurrency=_integer(
+                model_raw.get("concurrency", 4),
+                f"models.{name}.concurrency",
+                minimum=1,
+            ),
+            max_tokens=_integer(
+                model_raw.get("max_tokens", 4096),
+                f"models.{name}.max_tokens",
+                minimum=1,
+            ),
+            reasoning_effort=(
+                _string(
+                    model_raw["reasoning_effort"],
+                    f"models.{name}.reasoning_effort",
+                )
+                if model_raw.get("reasoning_effort") is not None
+                else None
+            ),
+            extra_body=dict(extra_body),
+        )
+    return models
+
+
 def load_mode(root: Path, name: str) -> Mode:
     raw = read_toml(root / "modes" / f"{name}.toml")
     unexpected = sorted(set(raw) - {"name", "rank_1_meaning", "prompt"})
@@ -421,14 +456,15 @@ def profile_name(root: Path, requested: str | None = None) -> str:
 
 
 def save_model_config(
-    root: Path,
     profile: ModelConfig,
     *,
     make_default: bool = False,
     replace: bool = False,
 ) -> bool:
     entry = _model_entry(profile)
-    raw = read_toml(root / "stockrank.toml")
+    path = user_config_path()
+    raw = read_toml(path) if path.exists() else {"defaults": {}, "models": {}}
+    load_global_model_config()
     models = _table(raw.get("models"), "models")
     if profile.name in models and not replace:
         raise ConfigError(f"model profile {profile.name!r} already exists; use --replace to update it")
@@ -437,13 +473,14 @@ def save_model_config(
     if made_default:
         defaults = _table(raw.get("defaults"), "defaults")
         defaults["model"] = profile.name
-    write_toml(root / "stockrank.toml", raw)
-    load_app_config(root)
+    write_toml(path, raw)
+    load_global_model_config()
     return made_default
 
 
-def delete_model_config(root: Path, name: str) -> None:
-    raw = read_toml(root / "stockrank.toml")
+def delete_model_config(name: str) -> None:
+    path = user_config_path()
+    raw = read_toml(path)
     models = _table(raw.get("models"), "models")
     if name not in models:
         raise ConfigError(f"unknown model profile {name!r}")
@@ -451,19 +488,20 @@ def delete_model_config(root: Path, name: str) -> None:
     if defaults.get("model") == name:
         raise ConfigError(f"cannot remove default model profile {name!r}; make another profile default first")
     del models[name]
-    write_toml(root / "stockrank.toml", raw)
-    load_app_config(root)
+    write_toml(path, raw)
+    load_global_model_config()
 
 
-def set_default_model(root: Path, name: str) -> None:
-    raw = read_toml(root / "stockrank.toml")
+def set_default_model(name: str) -> None:
+    path = user_config_path()
+    raw = read_toml(path)
     models = _table(raw.get("models"), "models")
     if name not in models:
         raise ConfigError(f"unknown model profile {name!r}")
     defaults = _table(raw.get("defaults"), "defaults")
     defaults["model"] = name
-    write_toml(root / "stockrank.toml", raw)
-    load_app_config(root)
+    write_toml(path, raw)
+    load_global_model_config()
 
 
 def _validate_http_url(value: str, label: str) -> None:
