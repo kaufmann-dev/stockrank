@@ -35,13 +35,14 @@ stockrank init
 The tool installation creates the global `stockrank` command while keeping it linked to this
 checkout. `uv sync --all-extras` separately prepares the development environment. Installation does
 not create project files: `stockrank init` explicitly initializes the current directory with a
-zero-model configuration, the `best-bet` mode, and the `liquid-50` universe. Running it again in a
-valid project leaves those project files unchanged and resumes the setup wizard. During partial
+configuration, the `best-bet` mode, and the `liquid-50` universe. Running it again in a valid
+project leaves those project files unchanged and resumes the setup wizard. During partial
 initialization, valid existing starter mode and universe files are preserved and only missing files
 are created. The interactive setup then searches the current
 [models.dev](https://models.dev/) catalog for an OpenAI-compatible provider and model, stores the
-provider API key, and stores the Massive API key. If the catalog is unavailable or does not contain
-the provider, choose **Custom OpenAI-compatible provider** and enter its base URL.
+provider API key, stores the model profile in the user configuration directory, and stores the
+Massive API key. If the catalog is unavailable or does not contain the provider, choose **Custom
+OpenAI-compatible provider** and enter its base URL.
 
 Credential prompts are hidden and require confirmation. Secrets are saved in the operating system
 keyring; API keys are never stored in `stockrank.toml` or passed as command-line options. SEC requests
@@ -54,13 +55,15 @@ it when a different identity is appropriate.
 
 - Massive and SEC connection settings;
 - evidence depth and minimum coverage;
-- the default model, mode, race profile, and seed;
+- the default mode, race profile, and seed;
 - the tracking benchmark;
-- named OpenAI-compatible model profiles.
 
-The first profile configured by `stockrank init` automatically becomes the default. Rerunning
-`stockrank init` offers to add another profile and asks whether it should become the default; it does
-not replace existing profiles or overwrite an existing Massive key.
+Named OpenAI-compatible model profiles and the selected default model are user-wide settings. They
+are saved at `$XDG_CONFIG_HOME/stockrank/config.toml`, or
+`~/.config/stockrank/config.toml` when `XDG_CONFIG_HOME` is unset. The first profile configured by
+`stockrank init` automatically becomes the default. Rerunning `stockrank init` offers to add another
+profile and asks whether it should become the default; it does not replace existing profiles or
+overwrite an existing Massive key.
 
 A DeepSeek profile uses the standard OpenAI Python client with `https://api.deepseek.com`. Add and
 securely authenticate any other OpenAI-compatible provider from the CLI:
@@ -73,10 +76,11 @@ stockrank model add openrouter \
 stockrank model default openrouter
 ```
 
-The non-secret profile is saved under `[models.<name>]` with its provider ID, base URL, and model ID;
-its API key is saved separately under the same profile name in the operating system keyring. Each run
-selects exactly one profile and freezes its resolved non-secret settings. Provider-specific controls
-such as DeepSeek thinking mode and `reasoning_effort` remain explicit in that profile.
+The non-secret profile is saved under `[models.<name>]` in the user configuration file with its
+provider ID, base URL, and model ID; its API key is saved separately under the same profile name in
+the operating system keyring. Each run selects exactly one profile and freezes its resolved
+non-secret settings. Provider-specific controls such as DeepSeek thinking mode and
+`reasoning_effort` remain explicit in that profile.
 
 Modes live in `modes/*.toml` and contain `name`, `rank_1_meaning`, and one complete `prompt`.
 `best-bet` is the only bundled mode. Custom ranking instructions belong in another saved mode file;

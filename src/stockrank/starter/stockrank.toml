@@ -23,5 +23,3 @@ seed = 42
 
 [tracking]
 benchmark = "SPY"
-
-[models]

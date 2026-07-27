@@ -371,7 +371,8 @@ def model_default_cmd(
     name: Annotated[str, typer.Argument(help="Existing model profile name.")],
 ) -> None:
     try:
-        set_default_model(_require_initialized(), name)
+        _require_initialized()
+        set_default_model(name)
         console.print(f"Default model profile set to {name!r}.")
     except Exception as exc:  # noqa: BLE001 - CLI boundary renders domain errors
         _fail(exc)

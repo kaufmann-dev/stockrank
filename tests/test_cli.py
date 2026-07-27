@@ -6,7 +6,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from stockrank.cli import app
-from stockrank.config import load_app_config, write_toml
+from stockrank.config import load_app_config, user_config_path, write_toml
 from stockrank.credentials import CredentialStore
 from stockrank.runs import RunStore
 
@@ -21,7 +21,13 @@ def _project(root: Path) -> None:
                 "massive": {},
                 "sec": {},
             },
-            "defaults": {"model": "deepseek", "mode": "best-bet", "profile": "medium"},
+            "defaults": {"mode": "best-bet", "profile": "medium"},
+        },
+    )
+    write_toml(
+        user_config_path(),
+        {
+            "defaults": {"model": "deepseek"},
             "models": {
                 "deepseek": {
                     "provider": "deepseek",
@@ -255,6 +261,7 @@ def test_adds_multiple_model_profiles_and_stores_keys_outside_toml(
 ) -> None:
     _project(tmp_path)
     store = CredentialStore(MemoryKeyring())
+    project_config_before = (tmp_path / "stockrank.toml").read_bytes()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("stockrank.cli._credentials", lambda: store)
 
@@ -282,7 +289,8 @@ def test_adds_multiple_model_profiles_and_stores_keys_outside_toml(
     assert config.models["openrouter"].provider == "openrouter"
     assert config.defaults.model == "openrouter"
     assert store.require_llm_key("openrouter") == "openrouter-secret"
-    assert "openrouter-secret" not in (tmp_path / "stockrank.toml").read_text()
+    assert (tmp_path / "stockrank.toml").read_bytes() == project_config_before
+    assert "openrouter-secret" not in user_config_path().read_text()
 
     second = runner.invoke(
         app,
@@ -333,7 +341,7 @@ def test_first_added_model_becomes_default(tmp_path: Path, monkeypatch) -> None:
     config = load_app_config(tmp_path)
     assert config.defaults.model == "openrouter"
     assert store.require_llm_key("openrouter") == "openrouter-secret"
-    assert "openrouter-secret" not in (tmp_path / "stockrank.toml").read_text()
+    assert "openrouter-secret" not in user_config_path().read_text()
 
 
 def test_sets_and_clears_keyring_credentials_from_hidden_prompts(
