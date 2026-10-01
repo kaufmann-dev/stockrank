@@ -5,7 +5,7 @@ import threading
 from dataclasses import dataclass
 from types import SimpleNamespace
 
-import httpx
+import httpx2
 import pytest
 from openai import APITimeoutError, RateLimitError
 
@@ -266,12 +266,12 @@ def test_missing_api_key_is_reported_before_client_creation() -> None:
 @pytest.mark.parametrize(
     "error",
     [
-        APITimeoutError(request=httpx.Request("POST", "https://api.example.test")),
+        APITimeoutError(request=httpx2.Request("POST", "https://api.example.test")),
         RateLimitError(
             "rate limited",
-            response=httpx.Response(
+            response=httpx2.Response(
                 429,
-                request=httpx.Request("POST", "https://api.example.test"),
+                request=httpx2.Request("POST", "https://api.example.test"),
             ),
             body=None,
         ),
