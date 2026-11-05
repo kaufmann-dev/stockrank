@@ -222,22 +222,14 @@ def test_init_refuses_invalid_existing_config_without_writing(
 def test_init_preserves_valid_customized_project(tmp_path: Path, monkeypatch) -> None:
     _project(tmp_path)
     monkeypatch.setattr("stockrank.cli._run_setup", lambda root: None)
-    before = {
-        path.relative_to(tmp_path): path.read_bytes()
-        for path in tmp_path.rglob("*")
-        if path.is_file()
-    }
+    before = {path.relative_to(tmp_path): path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ["init"])
 
     assert result.exit_code == 0
     assert f"Already initialized in {tmp_path}." in result.stdout
-    after = {
-        path.relative_to(tmp_path): path.read_bytes()
-        for path in tmp_path.rglob("*")
-        if path.is_file()
-    }
+    after = {path.relative_to(tmp_path): path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
     assert after == before
 
 

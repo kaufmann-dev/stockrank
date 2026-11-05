@@ -147,9 +147,7 @@ def test_terminal_autocomplete_uses_dark_high_contrast_menu(monkeypatch) -> None
     rules = dict(style.style_rules)
     assert rules["completion-menu"] == "fg:#e5e7eb bg:#1f2937"
     assert rules["completion-menu.completion"] == "fg:#e5e7eb bg:#1f2937 nobold"
-    assert rules["completion-menu.completion.current"] == (
-        "fg:#ffffff bg:#2563eb noreverse"
-    )
+    assert rules["completion-menu.completion.current"] == ("fg:#ffffff bg:#2563eb noreverse")
     assert rules["answer"] == "fg:#e5e7eb"
     assert rules["selected"] == "fg:#ffffff bg:#2563eb bold noreverse"
 

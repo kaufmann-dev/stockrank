@@ -58,9 +58,7 @@ def initialize_project(root: Path) -> InitializationResult:
         try:
             load_app_config(root)
         except ConfigError as exc:
-            raise ConfigError(
-                f"cannot initialize because existing stockrank.toml is invalid: {exc}"
-            ) from exc
+            raise ConfigError(f"cannot initialize because existing stockrank.toml is invalid: {exc}") from exc
         return InitializationResult(already_initialized=True)
 
     asset_paths = (
@@ -72,9 +70,7 @@ def initialize_project(root: Path) -> InitializationResult:
         if not path.exists():
             continue
         if not path.is_file():
-            raise ConfigError(
-                f"cannot initialize because existing {path.relative_to(root)} is not a file"
-            )
+            raise ConfigError(f"cannot initialize because existing {path.relative_to(root)} is not a file")
         try:
             if path == asset_paths[0]:
                 load_mode(root, "best-bet")
@@ -101,9 +97,7 @@ def initialize_project(root: Path) -> InitializationResult:
     write_toml(config_path, raw)
     created.append(config_path)
     ordered_created = tuple(root / relative for relative in _STARTER_FILES if root / relative in created)
-    ordered_preserved = tuple(
-        root / relative for relative in _STARTER_FILES if root / relative in preserved
-    )
+    ordered_preserved = tuple(root / relative for relative in _STARTER_FILES if root / relative in preserved)
     return InitializationResult(
         already_initialized=False,
         created=ordered_created,

@@ -73,9 +73,7 @@ class TerminalSetupPrompts:
                     ignore_case=True,
                     match_middle=True,
                     style=_AUTOCOMPLETE_STYLE,
-                    validate=lambda value: (
-                        True if value in allowed else "Select one of the catalog choices."
-                    ),
+                    validate=lambda value: True if value in allowed else "Select one of the catalog choices.",
                 )
             )
         )
@@ -87,9 +85,7 @@ class TerminalSetupPrompts:
         default: str = "",
         validate: Validator | None = None,
     ) -> str:
-        return _require_answer(
-            _unsafe_ask(questionary.text(message, default=default, validate=validate))
-        )
+        return _require_answer(_unsafe_ask(questionary.text(message, default=default, validate=validate)))
 
     def confirm(self, message: str, *, default: bool = False) -> bool:
         return bool(_require_answer(_unsafe_ask(questionary.confirm(message, default=default))))
@@ -97,9 +93,7 @@ class TerminalSetupPrompts:
     def secret(self, label: str) -> str:
         nonempty = lambda value: True if value.strip() else f"{label} must not be empty."
         while True:
-            value = _require_answer(
-                _unsafe_ask(questionary.password(label, validate=nonempty))
-            )
+            value = _require_answer(_unsafe_ask(questionary.password(label, validate=nonempty)))
             confirmed = _require_answer(
                 _unsafe_ask(questionary.password(f"Confirm {label}", validate=nonempty))
             )
